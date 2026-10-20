@@ -1,0 +1,312 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+<title>Индекс цен квартиры</title>
+<link rel="preconnect" href="https://fonts.googleapis.com"/>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet"/>
+<script src="https://api-maps.yandex.ru/2.1/?apikey={{YANDEX_KEY}}&lang=ru_RU"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.1/dist/chart.umd.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --blue: #1a56db; --blue-dk: #1035a0; --green: #059669; --red: #dc2626; --orange: #d97706;
+    --violet: #7c3aed; --bg: #f1f5f9; --card: #ffffff; --border: #e2e8f0; --text: #0f172a;
+    --muted: #64748b; --radius: 12px;
+  }
+  body { font-family: 'Inter', sans-serif; background: var(--bg); color: var(--text); min-height: 100vh; }
+  .hero {
+    height: 220px; display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 0 24px; color: #fff;
+    background: linear-gradient(to bottom, rgba(10,20,60,.6), rgba(10,20,60,.8)),
+      url('https://images.unsplash.com/photo-1545324418-cc1a3fa10c00?auto=format&fit=crop&w=1920&q=80') center/cover no-repeat;
+  }
+  .hero h1 { font-size: clamp(1.4rem, 3.5vw, 2.3rem); font-weight: 700; max-width: 760px; }
+  .hero p { margin-top: 10px; font-size: .95rem; opacity: .85; max-width: 620px; }
+  .container { max-width: 1280px; margin: 0 auto; padding: 32px 24px 60px; }
+  .main-grid { display: grid; grid-template-columns: 1fr 400px; gap: 28px; align-items: start; }
+  @media (max-width: 900px) { .main-grid { grid-template-columns: 1fr; } }
+  .card { background: var(--card); border: 1px solid var(--border); border-radius: var(--radius); padding: 26px; box-shadow: 0 1px 3px rgba(0,0,0,.06); }
+  .section-title { font-size: .7rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--muted);
+    margin-bottom: 16px; padding-bottom: 10px; border-bottom: 1px solid var(--border); }
+  .form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 0 24px; }
+  .form-group { margin-bottom: 14px; }
+  label { display: block; font-size: .78rem; font-weight: 500; color: var(--muted); margin-bottom: 5px; }
+  input, select { width: 100%; padding: 9px 12px; border: 1.5px solid var(--border); border-radius: 8px; font-family: inherit;
+    font-size: .9rem; color: var(--text); background: #fff; outline: none; transition: border-color .15s; }
+  input:focus, select:focus { border-color: var(--blue); }
+  input.bad { border-color: var(--red); background: #fef2f2; }
+  input[readonly] { background: #f8fafc; color: var(--muted); }
+  .hint { font-size: .72rem; color: var(--muted); margin-top: 4px; }
+  .divider { margin: 22px 0 18px; }
+  .check-row { display: flex; align-items: center; gap: 8px; }
+  .check-row input { width: auto; }
+  .sidebar { display: flex; flex-direction: column; gap: 20px; }
+  .btn { display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; padding: 14px; background: var(--blue);
+    color: #fff; border: none; border-radius: 10px; font-family: inherit; font-size: 1rem; font-weight: 600; cursor: pointer; }
+  .btn:hover { background: var(--blue-dk); }
+  .btn:disabled { background: #94a3b8; cursor: not-allowed; }
+  .tip { font-size: .8rem; color: var(--muted); background: #f8fafc; border: 1px solid var(--border); border-radius: 8px; padding: 10px 14px; line-height: 1.5; }
+  #result-card, #error-box { display: none; }
+  .result-header { background: var(--green); color: #fff; padding: 14px 20px; font-size: .75rem; font-weight: 600; letter-spacing: .08em;
+    text-transform: uppercase; border-radius: var(--radius) var(--radius) 0 0; }
+  .result-body { background: #fff; border: 1px solid var(--border); border-top: none; border-radius: 0 0 var(--radius) var(--radius); padding: 16px 20px; }
+  .result-row { display: flex; justify-content: space-between; align-items: baseline; padding: 8px 0; gap: 12px; }
+  .result-row:not(:last-child) { border-bottom: 1px solid var(--border); }
+  .result-label { font-size: .85rem; color: var(--muted); }
+  .result-value { font-size: 1.2rem; font-weight: 700; text-align: right; }
+  .result-value.big { font-size: 1.55rem; color: var(--green); }
+  .result-value.small { font-size: .88rem; font-weight: 500; }
+  #error-box { background: #fef2f2; border: 1px solid #fecaca; border-radius: var(--radius); padding: 16px 20px; }
+  #error-box .err-title { font-size: .8rem; font-weight: 600; color: var(--red); margin-bottom: 8px; text-transform: uppercase; }
+  #error-list { list-style: none; }
+  #error-list li { font-size: .88rem; color: #991b1b; padding: 3px 0 3px 14px; position: relative; }
+  #error-list li::before { content: '•'; position: absolute; left: 0; color: var(--red); }
+  .map-section { margin-top: 28px; }
+  .map-coords-row { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }
+  .map-coords-row label { margin: 0; white-space: nowrap; }
+  .map-coords-row input { max-width: 300px; }
+  #map { width: 100%; height: 480px; border-radius: 10px; overflow: hidden; border: 1.5px solid var(--border); }
+  .charts-section { margin-top: 28px; }
+  .charts-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+  @media (max-width: 900px) { .charts-grid { grid-template-columns: 1fr; } }
+  .chart-box h3 { font-size: .92rem; font-weight: 600; margin-bottom: 3px; }
+  .chart-sub { font-size: .76rem; color: var(--muted); margin-bottom: 10px; }
+  .chart-wrap { position: relative; height: 300px; }
+  .chart-wrap.big { height: 560px; }
+  .area-tag { display: inline-block; font-size: .7rem; font-weight: 600; color: var(--blue); background: #eff6ff; border-radius: 999px; padding: 2px 10px; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+<div class="hero">
+  <h1>Цена квартиры и гедонический индекс цен</h1>
+  <p>Москва и Московская область, вторичный рынок. Все цены за м². Индексы с поправкой на качество (гедонические) и медианные.</p>
+</div>
+<div class="container">
+<form id="form" novalidate>
+<div class="main-grid">
+  <div>
+    <div class="card">
+      <div class="section-title">Планировка</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Комнат (0 — студия)</label><input name="total_room_count" value="2" inputmode="numeric"/></div>
+        <div class="form-group"><label>Общая площадь, м²</label><input name="total_square" value="54" inputmode="decimal"/><div class="hint">до {{MAX_TOTAL_SQUARE}} м²</div></div>
+        <div class="form-group"><label>Жилая площадь, м²</label><input name="life_square" value="32" inputmode="decimal"/></div>
+        <div class="form-group"><label>Площадь кухни, м²</label><input name="kitchen_square" value="9" inputmode="decimal"/><div class="hint">кухня + жилая &lt; общей</div></div>
+        <div class="form-group"><label>Балконов / лоджий</label><input name="balcony_count" value="1" inputmode="numeric"/></div>
+        <div class="form-group"><label>Санузлов</label><input name="bathroom_count" value="1" inputmode="numeric"/></div>
+      </div>
+      <div class="divider section-title">Дом</div>
+      <div class="form-grid">
+        <div class="form-group"><label>Этаж квартиры</label><input name="storey" value="5" inputmode="numeric"/><div class="hint">не выше этажности дома</div></div>
+        <div class="form-group"><label>Этажей в доме</label><input name="storeys_count" value="12" inputmode="numeric"/><div class="hint">от 1 до {{MAX_STOREYS}}</div></div>
+        <div class="form-group"><label>Лифтов</label><input name="elevator_count" value="1" inputmode="numeric"/></div>
+        <div class="form-group"><label>Год постройки</label><input name="built_year" value="1985" inputmode="numeric"/></div>
+        <div class="form-group"><label>Серия дома</label><select name="building_batch_name">{{BUILDING_OPTIONS}}</select></div>
+        <div class="form-group"><label>Состояние квартиры</label><select name="apartment_condition">{{CONDITION_OPTIONS}}</select></div>
+      </div>
+    </div>
+  </div>
+  <div class="sidebar">
+    <div class="card">
+      <div class="section-title">Расчёт</div>
+      <div class="tip">Укажите параметры и точку на карте. Модель (CatBoost) оценит цену на {{LATEST_PERIOD}} и покажет, как менялась бы цена этой же квартиры и рынка вокруг.</div>
+      <br/>
+      <button class="btn" type="submit" id="submit-btn">Рассчитать</button>
+    </div>
+    <div id="error-box"><div class="err-title">Проверьте поля</div><ul id="error-list"></ul></div>
+    <div id="result-card">
+      <div class="result-header">Оценка на {{LATEST_PERIOD}}</div>
+      <div class="result-body">
+        <div class="result-row"><span class="result-label">Цена за м²</span><span class="result-value" id="r-sqm"></span></div>
+        <div class="result-row"><span class="result-label">Итоговая цена</span><span class="result-value big" id="r-total"></span></div>
+        <div class="result-row"><span class="result-label" id="r-sim-label">Медиана похожих</span><span class="result-value small" id="r-sim"></span></div>
+        <div class="result-row"><span class="result-label">Цены рядом (30 ближайших продаж)</span><span class="result-value small" id="r-local"></span></div>
+        <div class="result-row"><span class="result-label">Рост цены м² с {{BASE_PERIOD}}</span><span class="result-value small" id="r-growth"></span></div>
+        <div class="result-row"><span class="result-label">Расположение</span><span class="result-value small" id="r-place"></span></div>
+      </div>
+    </div>
+  </div>
+</div>
+<div class="map-section card">
+  <div class="section-title">Местоположение — найдите адрес или кликните на карте</div>
+  <div class="map-coords-row"><label>Координаты:</label><input id="coords" readonly/></div>
+  <input type="hidden" id="lat" name="lat" value="55.751244"/>
+  <input type="hidden" id="lon" name="lon" value="37.618423"/>
+  <div id="map"></div>
+</div>
+</form>
+
+<div class="charts-section card">
+  <div class="section-title">Индексы цен за м²</div>
+  <div id="charts-placeholder" class="tip">Рассчитайте стоимость — здесь появится индекс цен вашей квартиры и рынка вокруг.</div>
+  <div id="flat-charts" style="display:none;">
+    <div class="chart-box">
+      <h3>Индексы цен за м² (база: {{BASE_PERIOD}} = 100)</h3>
+      <div class="chart-sub">Гедонические: ваша квартира и рынок вокруг (одинаковые по качеству квартиры). Чёрная линия — медианная цена м² всех продаж в Москве (без поправки на качество).</div>
+      <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
+    </div>
+  </div>
+</div>
+</div>
+
+<script>
+const MAX_STOREYS = {{MAX_STOREYS}}, MAX_TOTAL_SQUARE = {{MAX_TOTAL_SQUARE}};
+const LABELS = {
+  total_room_count: 'Количество комнат', total_square: 'Общая площадь', kitchen_square: 'Площадь кухни',
+  life_square: 'Жилая площадь', balcony_count: 'Количество балконов', storey: 'Этаж квартиры',
+  storeys_count: 'Этажей в доме', bathroom_count: 'Количество санузлов', elevator_count: 'Количество лифтов',
+  built_year: 'Год постройки'
+};
+const INTS = ['total_room_count','balcony_count','storey','storeys_count','bathroom_count','elevator_count','built_year'];
+
+ymaps.ready(function () {
+  const start = [55.751244, 37.618423];
+  const map = new ymaps.Map("map", { center: start, zoom: 10, controls: ['zoomControl', 'geolocationControl'] });
+  const mark = new ymaps.Placemark(start, {}, { preset: 'islands#blueDotIcon' });
+  map.geoObjects.add(mark);
+  function setPoint(c) {
+    mark.geometry.setCoordinates(c);
+    document.getElementById("coords").value = c[0].toFixed(6) + ", " + c[1].toFixed(6);
+    document.getElementById("lat").value = c[0];
+    document.getElementById("lon").value = c[1];
+  }
+  setPoint(start);
+  map.events.add('click', e => setPoint(e.get('coords')));
+  const search = new ymaps.control.SearchControl({ options: { float: 'left', noPlacemark: true, boundedBy: [[54.0, 35.0], [57.5, 40.5]], results: 5 } });
+  map.controls.add(search);
+  search.events.add('resultselect', function (e) {
+    search.getResult(e.get('index')).then(function (res) {
+      const c = res.geometry.getCoordinates(); setPoint(c); map.setCenter(c, 15, { duration: 400 });
+    });
+  });
+});
+
+function num(v) { return Number(String(v).replace(',', '.').replace(/\s/g, '')); }
+
+// Same rules as the server (check_flat): shown at once, before any request.
+function checkForm(d) {
+  const errs = [], bad = new Set();
+  for (const f of Object.keys(LABELS)) {
+    const raw = String(d[f] ?? '').trim();
+    if (raw === '') { errs.push(`Заполните поле «${LABELS[f]}»`); bad.add(f); continue; }
+    const v = num(raw);
+    if (Number.isNaN(v)) { errs.push(`«${LABELS[f]}»: нужно число`); bad.add(f); continue; }
+    if (v < 0) { errs.push(`«${LABELS[f]}» не может быть отрицательным`); bad.add(f); }
+    if (INTS.includes(f) && !Number.isInteger(v)) { errs.push(`«${LABELS[f]}» должно быть целым числом`); bad.add(f); }
+  }
+  if (errs.length) return { errs, bad };
+  const total = num(d.total_square), kit = num(d.kitchen_square), life = num(d.life_square);
+  const storey = num(d.storey), storeys = num(d.storeys_count), year = num(d.built_year);
+  if (total <= 0) { errs.push('Общая площадь должна быть больше 0'); bad.add('total_square'); }
+  if (total > MAX_TOTAL_SQUARE) { errs.push(`Общая площадь не может быть больше ${MAX_TOTAL_SQUARE} м²`); bad.add('total_square'); }
+  if (kit + life >= total) {
+    errs.push(`Кухня + жилая площадь (${kit} + ${life} = ${+(kit + life).toFixed(2)} м²) должны быть меньше общей (${total} м²)`);
+    ['kitchen_square', 'life_square', 'total_square'].forEach(f => bad.add(f));
+  }
+  if (storeys < 1 || storeys > MAX_STOREYS) { errs.push(`Этажей в доме: от 1 до ${MAX_STOREYS}`); bad.add('storeys_count'); }
+  if (storey < 1) { errs.push('Этаж квартиры должен быть не меньше 1'); bad.add('storey'); }
+  else if (storey > storeys) { errs.push(`Этаж квартиры (${storey}) не может быть больше этажности дома (${storeys})`); bad.add('storey'); bad.add('storeys_count'); }
+  const maxYear = new Date().getFullYear() + 5;
+  if (year < 1800 || year > maxYear) { errs.push(`Год постройки: от 1800 до ${maxYear}`); bad.add('built_year'); }
+  return { errs, bad };
+}
+
+function markFields(bad) {
+  document.querySelectorAll('#form input[name]').forEach(el => el.classList.toggle('bad', bad.has(el.name)));
+}
+document.querySelectorAll('#form input[name]').forEach(el => el.addEventListener('input', () => {
+  const d = Object.fromEntries(new FormData(document.getElementById('form')));
+  markFields(checkForm(d).bad);
+}));
+
+const fmtRub = (x, step) => (Math.round(x / step) * step).toLocaleString('ru-RU') + ' ₽';
+const COLORS = { flat: '#1a56db', region: '#059669', okrug: '#d97706', raion: '#7c3aed', go: '#7c3aed', all: '#059669' };
+Chart.defaults.font.family = "'Inter', sans-serif";
+Chart.defaults.color = '#64748b';
+const charts = {};
+function axes(yTitle, fmt) {
+  return {
+    x: { grid: { color: '#e2e8f0' }, ticks: { maxRotation: 45, minRotation: 45 } },
+    y: { grid: { color: '#e2e8f0' }, title: { display: true, text: yTitle }, ticks: { callback: fmt } }
+  };
+}
+function line(label, data, color, dashed, fill) {
+  return { label, data, borderColor: color, backgroundColor: fill ? color + '14' : color, borderWidth: dashed ? 2 : 2.6,
+           borderDash: dashed ? [6, 4] : [], pointRadius: dashed ? 0 : 2.5, tension: .25, fill: !!fill, spanGaps: true };
+}
+function draw(id, labels, datasets, yTitle, fmt) {
+  const cfg = { type: 'line', data: { labels, datasets }, options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 14 } } }, scales: axes(yTitle, fmt) } };
+  if (charts[id]) { charts[id].destroy(); }
+  charts[id] = new Chart(document.getElementById(id), cfg);
+}
+const rubK = v => (v / 1000).toFixed(0) + 'k';
+function shortName(a) { return a.level === 'region' || a.level === 'all' ? a.name : a.name.replace('административный округ', 'АО'); }
+
+function render(r) {
+  document.getElementById('charts-placeholder').style.display = 'none';
+  document.getElementById('flat-charts').style.display = 'block';
+  const ds = [line('Ваша квартира', r.flat.index, COLORS.flat, false, false)];
+  r.areas.forEach(a => ds.push(line(shortName(a), a.hedonic_index, COLORS[a.level], a.level !== 'region' && a.level !== 'all')));
+  ds.forEach(d => { d.borderWidth = d.borderDash.length ? 2.2 : 3; d.pointRadius = 3; });
+  ds.push(Object.assign(line(`Медиана ₽/м², ${r.region_median.name} (все продажи)`, r.region_median.index, '#000000', false, false),
+                        { borderWidth: 2.5, pointRadius: 2 }));
+  draw('indexChart', r.periods, ds, 'Индекс (база = 100)', v => v);
+}
+
+document.getElementById("form").onsubmit = async (e) => {
+  e.preventDefault();
+  const btn = document.getElementById("submit-btn"), errorBox = document.getElementById("error-box"),
+        errorList = document.getElementById("error-list"), resultCard = document.getElementById("result-card");
+  const data = Object.fromEntries(new FormData(e.target));
+  data.is_apartment = 0;  // квартира, прямая продажа (поля убраны из формы)
+  data.sale_type_name = 'прямая продажа';
+  if (data.building_batch_name === "") data.building_batch_name = null;
+  errorBox.style.display = "none";
+  const { errs, bad } = checkForm(data);
+  markFields(bad);
+  if (errs.length) {
+    errorList.innerHTML = errs.map(m => '<li>' + m + '</li>').join('');
+    errorBox.style.display = 'block'; resultCard.style.display = 'none';
+    return;
+  }
+  btn.disabled = true; btn.textContent = "Считаем…";
+  try {
+    const res = await fetch("/estimate", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data) });
+    const r = await res.json();
+    if (!res.ok) {
+      const msgs = Array.isArray(r.detail) ? r.detail : [r.detail || "Неизвестная ошибка"];
+      errorList.innerHTML = msgs.map(m => '<li>' + m + '</li>').join('');
+      errorBox.style.display = 'block'; resultCard.style.display = 'none';
+    } else {
+      document.getElementById("r-sqm").textContent = fmtRub(r.price_per_m2, 1000);
+      document.getElementById("r-total").textContent = fmtRub(r.price_total, 100000);
+      const g = r.flat.index[r.flat.index.length - 1] - 100;
+      document.getElementById("r-growth").textContent = (g >= 0 ? '+' : '') + g.toFixed(1) + ' %';
+      if (r.compare) {
+        const rl = r.rooms === 'студия' ? 'студий' : r.rooms + '-комн.';
+        document.getElementById('r-sim-label').textContent = `Медиана ${rl} (${r.compare.area}, 3 мес.)`;
+        const d = r.compare.diff_pct;
+        document.getElementById('r-sim').textContent = fmtRub(r.compare.median_price_sq, 1000) + ` (оценка ${d >= 0 ? '+' : ''}${d} %)`;
+      } else {
+        document.getElementById('r-sim').textContent = 'мало продаж';
+      }
+      document.getElementById('r-local').textContent = fmtRub(r.local_price_sq, 1000) + ' / м²';
+      const p = r.place;
+      document.getElementById("r-place").textContent = [p.region, p.okrug, p.raion, p.go].filter(Boolean).join(' · ')
+        + (p.metro ? ` · м. ${p.metro} (${p.metro_km} км)` : '');
+      resultCard.style.display = 'block';
+      render(r);
+    }
+  } catch (err) {
+    errorList.innerHTML = '<li>Ошибка соединения: ' + err.message + '</li>';
+    errorBox.style.display = 'block';
+  } finally {
+    btn.disabled = false; btn.textContent = "Рассчитать";
+  }
+};
+</script>
+</body>
+</html>

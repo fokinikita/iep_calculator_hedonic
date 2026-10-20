@@ -1,0 +1,19 @@
+[project]
+name = "flats-app"
+version = "0.1.0"
+description = "Flat price estimate + hedonic price indices web app (runs from a precomputed bundle)"
+authors = [{ name = "fokinikita", email = "fokinikita@gmail.com" }]
+requires-python = ">=3.11,<3.14"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.setuptools.package-data]
+flats_app = ["page.html"]
+
+[tool.pytest.ini_options]
+pythonpath = ["src"]
+testpaths = ["tests"]
+
+[tool.ruff]
+line-length = 120

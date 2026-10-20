@@ -1,0 +1,4 @@
+* text=auto eol=lf
+*.ps1 text eol=crlf
+# bundle files are checksummed in data/manifest.json: keep them byte-for-byte
+data/** -text

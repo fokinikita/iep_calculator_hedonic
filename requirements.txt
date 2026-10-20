@@ -1,0 +1,13 @@
+# Web app runtime only (no training / pipeline dependencies)
+fastapi==0.151.0
+uvicorn==0.54.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+polars==1.44.2
+numpy==2.5.4
+pandas==3.0.6  # required by catboost
+scipy==1.18.1
+scikit-learn==1.9.1
+shapely==2.2.0
+attrs==26.1.0
+catboost==1.2.10

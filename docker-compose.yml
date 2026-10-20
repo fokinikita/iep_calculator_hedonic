@@ -1,0 +1,14 @@
+services:
+  app:
+    build: .
+    image: flats-app:latest
+    env_file: .env
+    environment:
+      APP_DATA_DIR: /app/data
+    volumes:
+      # bundle from `python -m flats_pipeline export-app`; read-only
+      - ./data:/app/data:ro
+    ports:
+      - "127.0.0.1:${APP_PORT:-8010}:8010"
+    mem_limit: 1g
+    restart: unless-stopped
