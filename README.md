@@ -3,9 +3,11 @@
 Web app: estimate of a flat's price per m² and price indices (Москва / Московская область, округ,
 район, городской округ). It runs from a small **precomputed bundle** in `data/`. No training data or
 parquet files are needed. Per request it computes only the estimate of the entered flat by the
-gradient boosting model (CatBoost) with simple month dummies: the flat's curve on the chart is the same
-flat with only the month changed. The model is regularised (depth 6, l2 50, every tree on a random 80%
-of the sales), so a single flat's curve does not jump from month to month.
+gradient boosting model (CatBoost) with simple month dummies plus the month number (0, 1, 2, ...):
+the flat's curve on the chart is the same flat with only the month changed. The model is regularised
+(depth 6, l2 50, every tree on a random 80% of the sales), and the month number lets trees pool
+neighbouring months, so a single flat's curve does not jump from month to month, also in the center
+(ЦАО: zig-zag 0.6% a month, no flat with a >5% monthly jump).
 
 The linear time-dummy variant (a second model and chart) is on the branch `linear-time-dummies`.
 

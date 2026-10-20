@@ -68,8 +68,9 @@ B = load_bundle(settings.APP_DATA_DIR, threads=settings.APP_THREADS)
 META = B.meta
 CONTINUOUS = META["continuous_features"]
 CATEGORICAL = META["categorical_features"]
-FEATURE_ORDER = META["feature_order"]  # continuous + month dummies + categorical
+FEATURE_ORDER = META["feature_order"]  # continuous + month dummies + month number + categorical
 TIME_DUMMIES = META["time_dummies"]
+TIME_INDEX = META.get("time_index_feature")  # month number 0..n-1 (None in older bundles)
 FILL = META.get("continuous_fill", {})
 MONTHS = B.months
 PERIODS = B.periods
@@ -230,9 +231,10 @@ def estimate(d: FlatRequest):
 
     feats = flat_features(d)
     x = model_input(feats)
-    # One row per month: the flat as if sold in that month (month dummy = 1, the others 0).
+    # One row per month: the flat as if sold in that month (month dummy = 1, the others 0; month number).
     by_month = x.join(pl.DataFrame({"month_no": range(len(MONTHS))}), how="cross").with_columns(
         [(pl.col("month_no") == i).cast(pl.Float64).alias(dummy) for i, dummy in enumerate(TIME_DUMMIES)]
+        + ([pl.col("month_no").cast(pl.Float64).alias(TIME_INDEX)] if TIME_INDEX else [])
     ).select(FEATURE_ORDER)
     # The model predicts log(total price) (monotone in the areas and condition); per m2 = total / area.
     # Plain rows (no pandas / pyarrow needed); columns in training order.
