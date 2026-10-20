@@ -1,82 +1,74 @@
 # iep_calculator_hedonic
 
-Web app: estimate of a flat's price per m² and price indices (Москва / Московская область, округ,
-район, городской округ). It runs from a small **precomputed bundle** in `data/`. No training data or
-parquet files are needed. Per request it computes only the estimate of the entered flat by the
-gradient boosting model (CatBoost) with simple month dummies plus the month number (0, 1, 2, ...):
-the flat's curve on the chart is the same flat with only the month changed. The model is regularised
-(depth 6, l2 50, every tree on a random 80% of the sales), and the month number lets trees pool
-neighbouring months, so a single flat's curve does not jump from month to month, also in the center
-(ЦАО: zig-zag 0.6% a month, no flat with a >5% monthly jump).
+Flat price estimate and hedonic price indices (Москва / Московская область).
 
-The linear time-dummy variant (a second model and chart) is on the branch `linear-time-dummies`.
+## 1. Settings
 
-## Layout
-
-```
-iep_calculator_hedonic/
-  data/                         the bundle (made by flats_pipeline, ~24 MB)
-    manifest.json               export time, data period, model quality, file list with sha256
-    model/model.cbm             CatBoost model (calibration already inside)
-    model/model_meta.json       feature order (with month dummies), fill values, months, conditions
-    model/linear_model.json     linear time-dummy model (used on the branch linear-time-dummies)
-    indices/areas.json          per area and month: hedonic and median price per m²,
-                                indices, medians of similar flats by number of rooms
-    checks/reference_estimates.json  curves of 8 flats computed by the pipeline (tests compare)
-    local/local_price_reference.npz   coordinates + log price per m² of all sales (30 nearest)
-    geo/                        polygons (Москва, районы, области) and metro
-  src/flats_app/
-    api.py                      FastAPI: /, /estimate, /health
-    bundle.py                   loads and checks the bundle
-    features/                   feature code for one flat (copy of the pipeline's, IEP variant)
-    local.py                    районы / городские округа, price of the 30 nearest sales
-    form.py, page.html          form options and the page
-    settings.py                 settings from env / .env
-  tests/                        rules, monotonicity, match with the pipeline's reference answers
-  Dockerfile, docker-compose.yml, requirements.txt, .env.example
+```bash
+cp .env.example .env        # Windows: copy .env.example .env
 ```
 
-## Update the data
+Set `YANDEX_MAPS_API_JS_KEY=` in `.env` (without it the map and address search do not load).
 
-In `flats_pipeline` after retraining (`model-all` also does it at the end):
+## 2. Run with Docker
 
+```bash
+docker compose up -d --build
 ```
-python -m flats_pipeline export-app            # writes this repo's data/ (APP_BUNDLE_DIR in the pipeline .env)
-python -m flats_pipeline export-app --out D:\some\folder
-```
 
-The export is written to `data.tmp` and then swapped in, so the folder is never half-written.
-Restart the app (or the container) to load the new data. No image rebuild is needed, because
-`data/` is mounted into the container.
+Open http://127.0.0.1:8010 (port: `APP_PORT` in `.env`).
 
-Every export also writes `data/checks/reference_estimates.json` (answers of the pipeline for 8 flats);
-`pytest` checks the app gives the same, so a retrained bundle is checked too.
+| What | Command |
+|---|---|
+| Status (wait for `healthy`) | `docker compose ps` |
+| Logs | `docker compose logs -f` |
+| Restart | `docker compose restart` |
+| Stop | `docker compose down` |
+| Update after `git push` | `git pull && docker compose up -d --build` |
 
-## Run locally
+The app listens on `127.0.0.1` only. To open it from another computer, either use an SSH tunnel
+(`ssh -L 8020:127.0.0.1:8010 user@server`, then http://127.0.0.1:8020), or change the ports line in
+`docker-compose.yml` to `- "8010:8010"` and allow port 8010 in the firewall.
 
-```
+## 3. Run without Docker (Python 3.12)
+
+Windows:
+
+```powershell
 py -3.12 -m venv .venv
-.venv\Scripts\python -m pip install -r requirements-dev.txt
-copy .env.example .env          # fill in YANDEX_MAPS_API_JS_KEY
-scripts\run_local.ps1           # http://127.0.0.1:8010
-.venv\Scripts\python -m pytest
+.venv\Scripts\python -m pip install -r requirements.txt
+powershell -ExecutionPolicy Bypass -File scripts\run_local.ps1
 ```
 
-## Run in Docker
+Linux:
 
+```bash
+python3.12 -m venv .venv
+.venv/bin/pip install -r requirements.txt
+PYTHONPATH=src .venv/bin/uvicorn flats_app.api:app --host 127.0.0.1 --port 8010
 ```
-docker compose up -d --build    # http://127.0.0.1:8010 (APP_PORT in .env)
+
+Open http://127.0.0.1:8010.
+
+## 4. Check
+
+```bash
+curl http://127.0.0.1:8010/health          # {"status":"ok",...}
 ```
 
-- The image holds only the code and the runtime dependencies. The bundle is mounted read-only from `./data`.
-- `/health` is used as the container health check.
-- Memory: about 210 MB at rest. The compose file caps the container at 1 GB.
+Tests:
 
-## Settings (env / .env)
+```bash
+.venv/bin/pip install -r requirements-dev.txt      # Windows: .venv\Scripts\python -m pip install -r requirements-dev.txt
+.venv/bin/python -m pytest                         # Windows: .venv\Scripts\python -m pytest
+```
 
-| Variable | Default | Meaning |
-|---|---|---|
-| `YANDEX_MAPS_API_JS_KEY` | empty | map + address search on the page |
-| `APP_DATA_DIR` | `./data` (`/app/data` in docker) | bundle folder |
-| `APP_THREADS` | 2 | threads for the model and the nearest-sales search |
-| `APP_PORT` | 8010 | host port for docker compose |
+## 5. Update the data
+
+The model and indices in `data/` are made by the `flats_pipeline` project:
+
+```bash
+python -m flats_pipeline export-app      # in flats_pipeline: writes this repo's data/
+```
+
+Then commit `data/`, push, and on the server: `git pull && docker compose up -d --build`.
