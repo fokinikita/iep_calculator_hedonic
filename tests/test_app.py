@@ -54,6 +54,8 @@ def test_oblast_flat():
         ({"total_square": "54 м2"}, "Уберите текст"),
         ({"total_square": "301", "life_square": "200", "kitchen_square": "30"}, "не может быть больше 300"),
         ({"lat": 59.93, "lon": 30.31}, "Москве или Московской области"),
+        ({"balcony_count": "6"}, "Балконов не может быть больше 5"),
+        ({"bathroom_count": "6"}, "Санузлов не может быть больше 5"),
     ],
 )
 def test_rules(change, message):

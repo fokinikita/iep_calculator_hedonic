@@ -37,6 +37,8 @@ logger = logging.getLogger(__name__)
 MAX_STOREYS = 100
 MAX_TOTAL_SQUARE = 300
 MAX_ROOMS = 20
+MAX_BALCONIES = 5
+MAX_BATHROOMS = 5
 MIN_BUILT_YEAR = 1800
 # Moscow + Moscow Oblast, with a margin
 LAT_RANGE, LON_RANGE = (54.2, 56.99), (35.1, 40.25)
@@ -165,6 +167,10 @@ def check_flat(d: FlatRequest) -> list[str]:
         errors.append("Этаж квартиры должен быть не меньше 1")
     elif d.storey > d.storeys_count:
         errors.append(f"Этаж квартиры ({d.storey}) не может быть больше этажности дома ({d.storeys_count})")
+    if d.balcony_count > MAX_BALCONIES:
+        errors.append(f"Балконов не может быть больше {MAX_BALCONIES}")
+    if d.bathroom_count > MAX_BATHROOMS:
+        errors.append(f"Санузлов не может быть больше {MAX_BATHROOMS}")
     if d.total_room_count > MAX_ROOMS:
         errors.append(f"Комнат не может быть больше {MAX_ROOMS}")
     if not MIN_BUILT_YEAR <= d.built_year <= date.today().year + 5:
@@ -341,4 +347,6 @@ def page():
         .replace("{{LATEST_PERIOD}}", PERIODS[-1])
         .replace("{{MAX_STOREYS}}", str(MAX_STOREYS))
         .replace("{{MAX_TOTAL_SQUARE}}", str(MAX_TOTAL_SQUARE))
+        .replace("{{MAX_BALCONIES}}", str(MAX_BALCONIES))
+        .replace("{{MAX_BATHROOMS}}", str(MAX_BATHROOMS))
     )

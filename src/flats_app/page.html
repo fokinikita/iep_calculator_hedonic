@@ -81,7 +81,7 @@
 <body>
 <div class="hero">
   <h1>Цена квартиры и гедонический индекс цен</h1>
-  <p>Москва и Московская область, вторичный рынок. Индексы с поправкой на качество (гедонические) и медианные.</p>
+  <p>Оценка стоимости квартиры на вторичном рынке и её гедонический индекс. Москва и Московская область.</p>
 </div>
 <div class="container">
 <form id="form" novalidate>
@@ -94,8 +94,8 @@
         <div class="form-group"><label>Общая площадь, м²</label><input name="total_square" value="54" inputmode="decimal"/><div class="hint">до {{MAX_TOTAL_SQUARE}} м²</div></div>
         <div class="form-group"><label>Жилая площадь, м²</label><input name="life_square" value="32" inputmode="decimal"/></div>
         <div class="form-group"><label>Площадь кухни, м²</label><input name="kitchen_square" value="9" inputmode="decimal"/><div class="hint">кухня + жилая &lt; общей</div></div>
-        <div class="form-group"><label>Балконов / лоджий</label><input name="balcony_count" value="1" inputmode="numeric"/></div>
-        <div class="form-group"><label>Санузлов</label><input name="bathroom_count" value="1" inputmode="numeric"/></div>
+        <div class="form-group"><label>Балконов / лоджий</label><input name="balcony_count" value="1" inputmode="numeric"/><div class="hint">до {{MAX_BALCONIES}}</div></div>
+        <div class="form-group"><label>Санузлов</label><input name="bathroom_count" value="1" inputmode="numeric"/><div class="hint">до {{MAX_BATHROOMS}}</div></div>
       </div>
       <div class="divider section-title">Дом</div>
       <div class="form-grid">
@@ -152,7 +152,7 @@
 </div>
 
 <script>
-const MAX_STOREYS = {{MAX_STOREYS}}, MAX_TOTAL_SQUARE = {{MAX_TOTAL_SQUARE}};
+const MAX_STOREYS = {{MAX_STOREYS}}, MAX_TOTAL_SQUARE = {{MAX_TOTAL_SQUARE}}, MAX_BALCONIES = {{MAX_BALCONIES}}, MAX_BATHROOMS = {{MAX_BATHROOMS}};
 const LABELS = {
   total_room_count: 'Количество комнат', total_square: 'Общая площадь', kitchen_square: 'Площадь кухни',
   life_square: 'Жилая площадь', balcony_count: 'Количество балконов', storey: 'Этаж квартиры',
@@ -200,6 +200,8 @@ function checkForm(d) {
   const total = num(d.total_square), kit = num(d.kitchen_square), life = num(d.life_square);
   const storey = num(d.storey), storeys = num(d.storeys_count), year = num(d.built_year);
   if (total <= 0) { errs.push('Общая площадь должна быть больше 0'); bad.add('total_square'); }
+  if (num(d.balcony_count) > MAX_BALCONIES) { errs.push(`Балконов не может быть больше ${MAX_BALCONIES}`); bad.add('balcony_count'); }
+  if (num(d.bathroom_count) > MAX_BATHROOMS) { errs.push(`Санузлов не может быть больше ${MAX_BATHROOMS}`); bad.add('bathroom_count'); }
   if (total > MAX_TOTAL_SQUARE) { errs.push(`Общая площадь не может быть больше ${MAX_TOTAL_SQUARE} м²`); bad.add('total_square'); }
   if (kit + life >= total) {
     errs.push(`Кухня + жилая площадь (${kit} + ${life} = ${+(kit + life).toFixed(2)} м²) должны быть меньше общей (${total} м²)`);
