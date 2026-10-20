@@ -6,6 +6,7 @@ from pathlib import Path
 
 from catboost import CatBoostRegressor
 
+from flats_app.linear import LinearModel
 from flats_app.local import LocalPrice
 
 SUPPORTED_FORMAT = 2
@@ -15,6 +16,7 @@ SUPPORTED_FORMAT = 2
 class Bundle:
     manifest: dict
     model: CatBoostRegressor
+    linear: LinearModel
     meta: dict
     periods: list[str]
     areas: dict[tuple[str, str], dict]
@@ -47,12 +49,14 @@ def load_bundle(data_dir: Path, threads: int = 2) -> Bundle:
     meta = _json(data_dir / "model" / "model_meta.json")
     model = CatBoostRegressor(thread_count=threads)
     model.load_model(str(data_dir / "model" / "model.cbm"))
+    linear = LinearModel(_json(data_dir / "model" / "linear_model.json"))
     indices = _json(data_dir / "indices" / "areas.json")
-    if indices["periods"] != [m.replace("_", "-") for m in meta["months"]]:
-        raise RuntimeError("Bundle indices and model cover different months; re-export it")
+    if indices["periods"] != [m.replace("_", "-") for m in meta["months"]] or linear.months != meta["months"]:
+        raise RuntimeError("Bundle indices and models cover different months; re-export it")
     return Bundle(
         manifest=manifest,
         model=model,
+        linear=linear,
         meta=meta,
         periods=indices["periods"],
         areas={(a["level"], a["area"]): a for a in indices["areas"]},

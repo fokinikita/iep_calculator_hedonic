@@ -74,7 +74,7 @@
   .chart-box h3 { font-size: .92rem; font-weight: 600; margin-bottom: 3px; }
   .chart-sub { font-size: .76rem; color: var(--muted); margin-bottom: 10px; }
   .chart-wrap { position: relative; height: 300px; }
-  .chart-wrap.big { height: 560px; }
+  .chart-wrap.big { height: 520px; }
   .area-tag { display: inline-block; font-size: .7rem; font-weight: 600; color: var(--blue); background: #eff6ff; border-radius: 999px; padding: 2px 10px; margin-bottom: 6px; }
 </style>
 </head>
@@ -121,6 +121,7 @@
       <div class="result-body">
         <div class="result-row"><span class="result-label">Цена за м²</span><span class="result-value" id="r-sqm"></span></div>
         <div class="result-row"><span class="result-label">Итоговая цена</span><span class="result-value big" id="r-total"></span></div>
+        <div class="result-row"><span class="result-label">Линейная регрессия (временные дамми)</span><span class="result-value small" id="r-linear"></span></div>
         <div class="result-row"><span class="result-label" id="r-sim-label">Медиана похожих</span><span class="result-value small" id="r-sim"></span></div>
         <div class="result-row"><span class="result-label">Цены рядом (30 ближайших продаж)</span><span class="result-value small" id="r-local"></span></div>
         <div class="result-row"><span class="result-label">Рост цены м² с {{BASE_PERIOD}}</span><span class="result-value small" id="r-growth"></span></div>
@@ -143,9 +144,14 @@
   <div id="charts-placeholder" class="tip">Рассчитайте стоимость — здесь появится индекс цен вашей квартиры и рынка вокруг.</div>
   <div id="flat-charts" style="display:none;">
     <div class="chart-box">
-      <h3>Индексы цен за м²: ваша квартира и рынок вокруг (база: {{BASE_PERIOD}} = 100)</h3>
+      <h3>Градиентный бустинг: ваша квартира и рынок вокруг (база: {{BASE_PERIOD}} = 100)</h3>
       <div class="chart-sub">Гедонические индексы: одинаковые по качеству квартиры, меняется только месяц продажи (временные дамми). Чёрная линия — медианная цена м² всех продаж в регионе (без поправки на качество).</div>
       <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
+    </div>
+    <div class="chart-box" style="margin-top: 32px;">
+      <h3>Линейная регрессия с временными дамми (база: {{BASE_PERIOD}} = 100)</h3>
+      <div class="chart-sub">log цены = характеристики квартиры + дамми месяца по региону + сглаженные поправки округа и района. Динамика общая для всех квартир района, поэтому линия квартиры совпадает с линией её района. Чёрная линия — медианная цена м² всех продаж в регионе.</div>
+      <div class="chart-wrap big"><canvas id="linearChart"></canvas></div>
     </div>
   </div>
 </div>
@@ -258,6 +264,7 @@ function render(r) {
   document.getElementById('charts-placeholder').style.display = 'none';
   document.getElementById('flat-charts').style.display = 'block';
   draw('indexChart', r.periods, indexDatasets(r, r.flat.index, 'hedonic_index'), 'Индекс (база = 100)', v => v);
+  draw('linearChart', r.periods, indexDatasets(r, r.linear.index, 'hedonic_index_linear'), 'Индекс (база = 100)', v => v);
 }
 
 document.getElementById("form").onsubmit = async (e) => {
@@ -287,6 +294,7 @@ document.getElementById("form").onsubmit = async (e) => {
     } else {
       document.getElementById("r-sqm").textContent = fmtRub(r.price_per_m2, 1000);
       document.getElementById("r-total").textContent = fmtRub(r.price_total, 100000);
+      document.getElementById("r-linear").textContent = fmtRub(r.linear.price_per_m2, 1000) + ' / м² · ' + fmtRub(r.linear.price_total, 100000);
       const g = r.flat.index[r.flat.index.length - 1] - 100;
       document.getElementById("r-growth").textContent = (g >= 0 ? '+' : '') + g.toFixed(1) + ' %';
       if (r.compare) {

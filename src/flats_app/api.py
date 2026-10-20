@@ -1,9 +1,9 @@
 """Flat price + hedonic indices web app.
 
 Runs from the precomputed bundle (APP_DATA_DIR, see bundle.py). The only thing computed per request
-is the model estimate of the entered flat (gradient boosting with month dummies): its features
-(same code as training), its price in the latest month and its curve over all months (only the
-month dummies change).
+is the estimate of the entered flat by two models (gradient boosting and a linear time-dummy
+regression): its features (same code as training), its price in the latest month and its curve over
+all months (only the month dummies change).
 
 Run:  uvicorn flats_app.api:app --host 127.0.0.1 --port 8010
 """
@@ -215,6 +215,7 @@ def area_series(level: str, name: str | None, rooms: str | None = None) -> dict 
         "name": name,
         "hedonic_price_sq": a["hedonic_price_sq"],
         "hedonic_index": a["hedonic_index"],
+        "hedonic_index_linear": a["hedonic_index_linear"],
         "median_price_sq": a["median_price_sq"],
         "median_index": a["median_index"],
         "n_sales": a["n_sales"],
@@ -234,13 +235,14 @@ def estimate(d: FlatRequest):
     by_month = x.join(pl.DataFrame({"month_no": range(len(MONTHS))}), how="cross").with_columns(
         [(pl.col("month_no") == i).cast(pl.Float64).alias(dummy) for i, dummy in enumerate(TIME_DUMMIES)]
     ).select(FEATURE_ORDER)
-    # The model predicts log(total price) (monotone in the areas and condition); per m2 = total / area.
+    # The models predict log(total price) (monotone in the areas and condition); per m2 = total / area.
     # Plain rows (no pandas / pyarrow needed); columns in training order.
     pool = Pool(by_month.rows(), cat_features=CATEGORICAL, feature_names=FEATURE_ORDER)
     price_sq = np.exp(B.model.predict(pool)) / d.total_square
     latest = float(price_sq[-1])
 
     place = feats.row(0, named=True)
+    linear_sq = np.exp(B.linear.curve_log({**place, **x.row(0, named=True)})) / d.total_square
     rooms = room_bucket(d.total_room_count)
     areas = []
     if place["area_region"]:
@@ -279,6 +281,12 @@ def estimate(d: FlatRequest):
             "go": place["area_go"],
             "metro": place["metro_name"],
             "metro_km": round(place["metro_distance_m"], 2) if place["metro_distance_m"] is not None else None,
+        },
+        "linear": {
+            "price_per_m2": round(float(linear_sq[-1]), 0),
+            "price_total": round(float(linear_sq[-1]) * d.total_square, 0),
+            "price_sq": [round(float(p), 0) for p in linear_sq],
+            "index": [round(100 * float(p) / float(linear_sq[0]), 2) for p in linear_sq],
         },
         "areas": areas,
         "region_median": {
