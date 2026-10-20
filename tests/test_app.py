@@ -124,7 +124,7 @@ def test_health():
 
 
 def test_same_answers_as_pipeline():
-    """The app's own copy of the feature code gives what the pipeline gives.
+    """The app's own copy of the feature code and of the linear model gives what the pipeline gives.
 
     The bundle holds curves of a few flats computed by flats_pipeline (export-app) with its code.
     """
@@ -134,3 +134,24 @@ def test_same_answers_as_pipeline():
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["flat"]["price_sq"] == pytest.approx(case["boosting_price_sq"], abs=1), case["request"]
+        assert body["linear"]["price_sq"] == pytest.approx(case["linear_price_sq"], abs=1), case["request"]
+
+
+def test_linear_curve_follows_its_area():
+    """Time-dummy model: the flat's index is the index of its area (same time effects for all flats)."""
+    body = client.post("/estimate", json={**FLAT, "lat": 55.6505, "lon": 37.7440}).json()
+    local = [a for a in body["areas"] if a["level"] == "raion"][0]
+    assert body["linear"]["index"] == pytest.approx(local["hedonic_index_linear"], abs=0.05)
+
+
+def test_linear_monotone_and_condition():
+    prices = [_price_linear(total_square=str(t)) for t in [45, 54, 70]]
+    assert prices == sorted(prices), prices
+    cond = [_price_linear(apartment_condition=c) for c in CONDITION_LEVELS]
+    assert cond == sorted(cond), cond
+
+
+def _price_linear(**change):
+    r = client.post("/estimate", json={**FLAT, "lat": 55.6505, "lon": 37.7440, **change})
+    assert r.status_code == 200, r.text
+    return r.json()["linear"]["price_total"]
