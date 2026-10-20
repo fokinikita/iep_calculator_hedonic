@@ -144,7 +144,7 @@
   <div id="flat-charts" style="display:none;">
     <div class="chart-box">
       <h3>Индексы цен за м²: ваша квартира и рынок вокруг (база: {{BASE_PERIOD}} = 100)</h3>
-      <div class="chart-sub">Гедонические индексы: одинаковые по качеству квартиры, меняется только месяц продажи (временные дамми). Чёрная линия — медианная цена м² всех продаж в регионе (без поправки на качество).</div>
+      <div class="chart-sub">Гедонические индексы: одинаковые по качеству квартиры, меняется только месяц продажи (временные дамми).</div>
       <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
     </div>
   </div>
@@ -226,11 +226,18 @@ const COLORS = { flat: '#1a56db', region: '#059669', okrug: '#d97706', raion: '#
 Chart.defaults.font.family = "'Inter', sans-serif";
 Chart.defaults.color = '#64748b';
 const charts = {};
-function axes(yTitle, fmt) {
+function axes(yTitle, fmt, bounds) {
   return {
     x: { grid: { color: '#e2e8f0' }, ticks: { maxRotation: 45, minRotation: 45 } },
-    y: { grid: { color: '#e2e8f0' }, title: { display: true, text: yTitle }, ticks: { callback: fmt } }
+    y: { grid: { color: '#e2e8f0' }, title: { display: true, text: yTitle }, ticks: { callback: fmt }, ...(bounds || {}) }
   };
+}
+// Y axis fitted to the lines (small margin), so close lines are still told apart.
+function tightBounds(datasets) {
+  const v = datasets.flatMap(d => d.data).filter(x => x !== null && Number.isFinite(x));
+  if (!v.length) return {};
+  const lo = Math.min(...v), hi = Math.max(...v), pad = Math.max((hi - lo) * 0.04, 0.5);
+  return { min: Math.floor(lo - pad), max: Math.ceil(hi + pad) };
 }
 function line(label, data, color, dashed, fill) {
   return { label, data, borderColor: color, backgroundColor: fill ? color + '14' : color, borderWidth: dashed ? 2 : 2.6,
@@ -238,7 +245,7 @@ function line(label, data, color, dashed, fill) {
 }
 function draw(id, labels, datasets, yTitle, fmt) {
   const cfg = { type: 'line', data: { labels, datasets }, options: { maintainAspectRatio: false, interaction: { mode: 'index', intersect: false },
-    plugins: { legend: { position: 'bottom', labels: { boxWidth: 14 } } }, scales: axes(yTitle, fmt) } };
+    plugins: { legend: { position: 'bottom', labels: { boxWidth: 14 } } }, scales: axes(yTitle, fmt, tightBounds(datasets)) } };
   if (charts[id]) { charts[id].destroy(); }
   charts[id] = new Chart(document.getElementById(id), cfg);
 }
@@ -249,8 +256,6 @@ function indexDatasets(r, flatIndex, areaKey) {
   const ds = [line('Ваша квартира', flatIndex, COLORS.flat, false, false)];
   r.areas.forEach(a => ds.push(line(shortName(a), a[areaKey], COLORS[a.level], a.level !== 'region' && a.level !== 'all')));
   ds.forEach(d => { d.borderWidth = d.borderDash.length ? 2.2 : 3; d.pointRadius = 3; });
-  ds.push(Object.assign(line(`Медиана ₽/м², ${r.region_median.name} (все продажи)`, r.region_median.index, '#000000', false, false),
-                        { borderWidth: 2.5, pointRadius: 2 }));
   return ds;
 }
 
