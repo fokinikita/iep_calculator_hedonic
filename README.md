@@ -63,12 +63,3 @@ Tests:
 .venv/bin/python -m pytest                         # Windows: .venv\Scripts\python -m pytest
 ```
 
-## 5. Update the data
-
-The model and indices in `data/` are made by the `flats_pipeline` project:
-
-```bash
-python -m flats_pipeline export-app      # in flats_pipeline: writes this repo's data/
-```
-
-Then commit `data/`, push, and on the server: `git pull && docker compose up -d --build`.
