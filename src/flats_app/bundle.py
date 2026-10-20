@@ -8,7 +8,7 @@ from catboost import CatBoostRegressor
 
 from flats_app.local import LocalPrice
 
-SUPPORTED_FORMAT = 1
+SUPPORTED_FORMAT = 2
 
 
 @dataclass

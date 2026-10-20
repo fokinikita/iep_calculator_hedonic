@@ -1,6 +1,4 @@
-import hashlib
 import json
-from pathlib import Path
 
 import pytest
 
@@ -14,7 +12,7 @@ from fastapi.testclient import TestClient  # noqa: E402
 from flats_app.api import CONDITION_LEVELS, app  # noqa: E402
 
 client = TestClient(app)
-REFERENCE = Path(__file__).parent / "reference_estimates.json"
+REFERENCE = settings.APP_DATA_DIR / "checks" / "reference_estimates.json"
 FLAT = {
     "total_room_count": "2", "total_square": "54", "kitchen_square": "9", "life_square": "32",
     "balcony_count": "1", "is_apartment": 0, "storey": "5", "storeys_count": "12", "bathroom_count": "1",
@@ -125,17 +123,14 @@ def test_health():
     assert r.status_code == 200 and r.json()["status"] == "ok"
 
 
-def test_same_answers_as_pipeline_app():
-    """The standalone app gives exactly what the pipeline app gave (same model, same features).
+def test_same_answers_as_pipeline():
+    """The app's own copy of the feature code gives what the pipeline gives.
 
-    The reference was recorded with flats_pipeline.app for the bundled model; after a retrain the
-    reference no longer applies and the test is skipped.
+    The bundle holds curves of a few flats computed by flats_pipeline (export-app) with its code.
     """
     ref = json.loads(REFERENCE.read_text(encoding="utf-8"))
-    model_sha = hashlib.sha256((settings.APP_DATA_DIR / "model" / "model.cbm").read_bytes()).hexdigest()
-    if ref["model_sha256"] != model_sha:
-        pytest.skip("reference recorded for another model")
     for case in ref["cases"]:
         r = client.post("/estimate", json=case["request"])
         assert r.status_code == 200, r.text
-        assert r.json() == case["response"], case["request"]
+        body = r.json()
+        assert body["flat"]["price_sq"] == pytest.approx(case["boosting_price_sq"], abs=1), case["request"]

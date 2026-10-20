@@ -14,9 +14,11 @@ COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
 COPY src ./src
+# The bundle (model + indices + geo) is part of the image, so the image runs on its own.
+# docker-compose mounts ./data over it, so locally a new export needs no rebuild.
+COPY data ./data
 
-# The bundle (model + indices + geo) is mounted at /app/data, so a new export needs no rebuild.
-RUN useradd --create-home app
+RUN useradd --create-home --uid 1000 app
 USER app
 EXPOSE 8010
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s \

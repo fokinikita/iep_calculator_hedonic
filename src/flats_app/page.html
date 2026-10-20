@@ -81,7 +81,7 @@
 <body>
 <div class="hero">
   <h1>Цена квартиры и гедонический индекс цен</h1>
-  <p>Москва и Московская область, вторичный рынок. Все цены за м². Индексы с поправкой на качество (гедонические) и медианные.</p>
+  <p>Москва и Московская область, вторичный рынок. Индексы с поправкой на качество (гедонические) и медианные.</p>
 </div>
 <div class="container">
 <form id="form" novalidate>
@@ -111,7 +111,7 @@
   <div class="sidebar">
     <div class="card">
       <div class="section-title">Расчёт</div>
-      <div class="tip">Укажите параметры и точку на карте. Модель (CatBoost) оценит цену на {{LATEST_PERIOD}} и покажет, как менялась бы цена этой же квартиры и рынка вокруг.</div>
+      <div class="tip">Укажите параметры и точку на карте. Модель оценит цену на {{LATEST_PERIOD}} и покажет, как менялась бы цена этой же квартиры и рынка вокруг.</div>
       <br/>
       <button class="btn" type="submit" id="submit-btn">Рассчитать</button>
     </div>
@@ -143,8 +143,8 @@
   <div id="charts-placeholder" class="tip">Рассчитайте стоимость — здесь появится индекс цен вашей квартиры и рынка вокруг.</div>
   <div id="flat-charts" style="display:none;">
     <div class="chart-box">
-      <h3>Индексы цен за м² (база: {{BASE_PERIOD}} = 100)</h3>
-      <div class="chart-sub">Гедонические: ваша квартира и рынок вокруг (одинаковые по качеству квартиры). Чёрная линия — медианная цена м² всех продаж в Москве (без поправки на качество).</div>
+      <h3>Индексы цен за м²: ваша квартира и рынок вокруг (база: {{BASE_PERIOD}} = 100)</h3>
+      <div class="chart-sub">Гедонические индексы: одинаковые по качеству квартиры, меняется только месяц продажи (временные дамми). Чёрная линия — медианная цена м² всех продаж в регионе (без поправки на качество).</div>
       <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
     </div>
   </div>
@@ -245,15 +245,19 @@ function draw(id, labels, datasets, yTitle, fmt) {
 const rubK = v => (v / 1000).toFixed(0) + 'k';
 function shortName(a) { return a.level === 'region' || a.level === 'all' ? a.name : a.name.replace('административный округ', 'АО'); }
 
-function render(r) {
-  document.getElementById('charts-placeholder').style.display = 'none';
-  document.getElementById('flat-charts').style.display = 'block';
-  const ds = [line('Ваша квартира', r.flat.index, COLORS.flat, false, false)];
-  r.areas.forEach(a => ds.push(line(shortName(a), a.hedonic_index, COLORS[a.level], a.level !== 'region' && a.level !== 'all')));
+function indexDatasets(r, flatIndex, areaKey) {
+  const ds = [line('Ваша квартира', flatIndex, COLORS.flat, false, false)];
+  r.areas.forEach(a => ds.push(line(shortName(a), a[areaKey], COLORS[a.level], a.level !== 'region' && a.level !== 'all')));
   ds.forEach(d => { d.borderWidth = d.borderDash.length ? 2.2 : 3; d.pointRadius = 3; });
   ds.push(Object.assign(line(`Медиана ₽/м², ${r.region_median.name} (все продажи)`, r.region_median.index, '#000000', false, false),
                         { borderWidth: 2.5, pointRadius: 2 }));
-  draw('indexChart', r.periods, ds, 'Индекс (база = 100)', v => v);
+  return ds;
+}
+
+function render(r) {
+  document.getElementById('charts-placeholder').style.display = 'none';
+  document.getElementById('flat-charts').style.display = 'block';
+  draw('indexChart', r.periods, indexDatasets(r, r.flat.index, 'hedonic_index'), 'Индекс (база = 100)', v => v);
 }
 
 document.getElementById("form").onsubmit = async (e) => {

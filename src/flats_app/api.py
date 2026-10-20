@@ -1,8 +1,9 @@
 """Flat price + hedonic indices web app.
 
 Runs from the precomputed bundle (APP_DATA_DIR, see bundle.py). The only thing computed per request
-is the model estimate of the entered flat: its features (same code as training), its price in the
-latest month and its curve over all months (only `year_month` changes).
+is the model estimate of the entered flat (gradient boosting with month dummies): its features
+(same code as training), its price in the latest month and its curve over all months (only the
+month dummies change).
 
 Run:  uvicorn flats_app.api:app --host 127.0.0.1 --port 8010
 """
@@ -67,7 +68,8 @@ B = load_bundle(settings.APP_DATA_DIR, threads=settings.APP_THREADS)
 META = B.meta
 CONTINUOUS = META["continuous_features"]
 CATEGORICAL = META["categorical_features"]
-TIME = META["time_feature"]
+FEATURE_ORDER = META["feature_order"]  # continuous + month dummies + categorical
+TIME_DUMMIES = META["time_dummies"]
 FILL = META.get("continuous_fill", {})
 MONTHS = B.months
 PERIODS = B.periods
@@ -228,10 +230,13 @@ def estimate(d: FlatRequest):
 
     feats = flat_features(d)
     x = model_input(feats)
-    by_month = x.join(pl.DataFrame({TIME: MONTHS}), how="cross")
+    # One row per month: the flat as if sold in that month (month dummy = 1, the others 0).
+    by_month = x.join(pl.DataFrame({"month_no": range(len(MONTHS))}), how="cross").with_columns(
+        [(pl.col("month_no") == i).cast(pl.Float64).alias(dummy) for i, dummy in enumerate(TIME_DUMMIES)]
+    ).select(FEATURE_ORDER)
     # The model predicts log(total price) (monotone in the areas and condition); per m2 = total / area.
     # Plain rows (no pandas / pyarrow needed); columns in training order.
-    pool = Pool(by_month.rows(), cat_features=CATEGORICAL + [TIME], feature_names=by_month.columns)
+    pool = Pool(by_month.rows(), cat_features=CATEGORICAL, feature_names=FEATURE_ORDER)
     price_sq = np.exp(B.model.predict(pool)) / d.total_square
     latest = float(price_sq[-1])
 

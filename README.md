@@ -2,7 +2,12 @@
 
 Web app: estimate of a flat's price per m² and price indices (Москва / Московская область, округ,
 район, городской округ). It runs from a small **precomputed bundle** in `data/`. No training data or
-parquet files are needed. Per request it computes only the model estimate for the entered flat.
+parquet files are needed. Per request it computes only the estimate of the entered flat by the
+gradient boosting model (CatBoost) with simple month dummies: the flat's curve on the chart is the same
+flat with only the month changed. The model is regularised (depth 6, l2 50, every tree on a random 80%
+of the sales), so a single flat's curve does not jump from month to month.
+
+The linear time-dummy variant (a second model and chart) is on the branch `linear-time-dummies`.
 
 ## Layout
 
@@ -10,10 +15,12 @@ parquet files are needed. Per request it computes only the model estimate for th
 iep_calculator_hedonic/
   data/                         the bundle (made by flats_pipeline, ~24 MB)
     manifest.json               export time, data period, model quality, file list with sha256
-    model/model.cbm             CatBoost hedonic model (calibration already inside)
-    model/model_meta.json       feature lists, fill values, months, condition levels
-    indices/areas.json          per area and month: hedonic and median price per m², indices,
-                                medians of similar flats by number of rooms
+    model/model.cbm             CatBoost model (calibration already inside)
+    model/model_meta.json       feature order (with month dummies), fill values, months, conditions
+    model/linear_model.json     linear time-dummy model (used on the branch linear-time-dummies)
+    indices/areas.json          per area and month: hedonic and median price per m²,
+                                indices, medians of similar flats by number of rooms
+    checks/reference_estimates.json  curves of 8 flats computed by the pipeline (tests compare)
     local/local_price_reference.npz   coordinates + log price per m² of all sales (30 nearest)
     geo/                        polygons (Москва, районы, области) and metro
   src/flats_app/
@@ -23,7 +30,7 @@ iep_calculator_hedonic/
     local.py                    районы / городские округа, price of the 30 nearest sales
     form.py, page.html          form options and the page
     settings.py                 settings from env / .env
-  tests/                        rules, monotonicity, exact match with the pipeline app
+  tests/                        rules, monotonicity, match with the pipeline's reference answers
   Dockerfile, docker-compose.yml, requirements.txt, .env.example
 ```
 
@@ -40,8 +47,8 @@ The export is written to `data.tmp` and then swapped in, so the folder is never 
 Restart the app (or the container) to load the new data. No image rebuild is needed, because
 `data/` is mounted into the container.
 
-After a retrain, `tests/reference_estimates.json` (answers recorded with the old pipeline app)
-no longer applies and the exact-match test is skipped.
+Every export also writes `data/checks/reference_estimates.json` (answers of the pipeline for 8 flats);
+`pytest` checks the app gives the same, so a retrained bundle is checked too.
 
 ## Run locally
 
