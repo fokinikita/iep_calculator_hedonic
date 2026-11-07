@@ -4,7 +4,7 @@ The two buckets belong to different accounts, so objects are streamed (download 
 copied server-side. Idempotent: an object already present with the same size is skipped.
 
 Env: SRC_S3_BUCKET SRC_S3_ENDPOINT_URL SRC_S3_ACCESS_KEY SRC_S3_SECRET_KEY  (main bucket)
-     PIPELINE_S3_BUCKET PIPELINE_S3_ENDPOINT_URL PIPELINE_S3_ACCESS_KEY PIPELINE_S3_SECRET_KEY
+     HEDONIC_S3_BUCKET HEDONIC_S3_ENDPOINT_URL HEDONIC_S3_ACCESS_KEY HEDONIC_S3_SECRET_KEY
 Run: python copy_winner_archive.py [--prefix cian_winner/] [--dry-run]
 """
 
@@ -41,7 +41,7 @@ def main() -> int:
     p.add_argument("--dry-run", action="store_true")
     a = p.parse_args()
     src, sb = client("SRC")
-    dst, db = client("PIPELINE")
+    dst, db = client("HEDONIC")
     have, want = listing(dst, db, a.prefix), listing(src, sb, a.prefix)
     todo = {k: s for k, s in want.items() if have.get(k) != s}
     print(f"source {len(want)} objects / {sum(want.values()) / 1e9:.2f} GB; to copy {len(todo)} "
