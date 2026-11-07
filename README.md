@@ -85,9 +85,9 @@ Each run is a version named by its date (`RUN_DATE`, Moscow). Everything goes to
 | `bundles/<date>/…` | dashboard bundle; `models/latest.json`, `bundles/latest.json` point to the newest |
 | `logs/<date>/pipeline_<day>.log` | pipeline log (also in Airflow task logs and `pipeline_data/logs/`) |
 
-The new dashboard (`app_v2`, http://127.0.0.1:8011) serves the baseline bundle (`data/`, in git) and every
-dated bundle in `bundles/`: pick the model version on the page; the other versions' estimate is shown
-beside it. The current dashboard (`app`, port 8010) keeps serving `data/` only.
+The new dashboard (`app_v2`, http://127.0.0.1:8011) always uses the latest model: the newest dated bundle
+in `bundles/` (baseline `data/` until the first run). The current dashboard (`app`, port 8010) keeps
+serving `data/` only.
 
 Server setup (once):
 
@@ -104,4 +104,4 @@ docker compose up -d app_v2
 | One step by hand | `docker compose --profile pipeline run --rm -e RUN_DATE=2026-11-11 pipeline <step>` |
 | Steps | `winner-fetch`, `sync-raw`, `run`, `dataset`, `features`, `hedonic-index`, `evaluate`, `export-bundle`, `publish` |
 | Whole run now | `airflow dags trigger hedonic_pipeline` (`--conf '{"run_date": "YYYY-MM-DD"}'` to redo a version) |
-| Model versions on the new dashboard | `curl http://127.0.0.1:8011/models` |
+| Model version on the new dashboard | `curl http://127.0.0.1:8011/health` |

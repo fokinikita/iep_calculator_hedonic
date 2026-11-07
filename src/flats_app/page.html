@@ -129,9 +129,7 @@
     <div class="card">
       <div class="section-title">Расчёт</div>
       <div class="tip">Укажите параметры и точку на карте. Модель оценит цену на {{LATEST_PERIOD}} и покажет, как менялась бы цена этой же квартиры и рынка вокруг.</div>
-      <div class="form-group" style="margin-top:14px;"><label>Модель (версия от даты обучения)</label>
-        <select name="model" id="model-select">{{MODEL_OPTIONS}}</select>
-        <div class="hint">Новая модель обучается каждую среду на свежих данных. Цены по другим версиям видны в результате и на графике.</div></div>
+      <br/>
       <button class="btn" type="submit" id="submit-btn">Рассчитать</button>
     </div>
     <div id="error-box"><div class="err-title">Проверьте поля</div><ul id="error-list"></ul></div>
@@ -143,7 +141,6 @@
         <div class="result-row"><span class="result-label" id="r-sim-label">Медиана похожих</span><span class="result-value small" id="r-sim"></span></div>
         <div class="result-row"><span class="result-label">Цены рядом (30 ближайших продаж)</span><span class="result-value small" id="r-local"></span></div>
         <div class="result-row"><span class="result-label">Рост цены м² за год (с {{BASE_PERIOD}})</span><span class="result-value small" id="r-growth"></span></div>
-        <div class="result-row" id="r-others-row"><span class="result-label">Другие версии модели</span><span class="result-value small" id="r-others"></span></div>
         <div class="result-row"><span class="result-label">Расположение</span><span class="result-value small" id="r-place"></span></div>
       </div>
     </div>
@@ -183,7 +180,6 @@
     <div><h4>Индекс и база 100</h4><p>Все линии пересчитаны так, что ровно 12 месяцев назад (<b>{{BASE_PERIOD}}</b>) каждая равна 100. Значение 108 значит «на 8 % дороже, чем год назад». Кнопка «Показать историю» добавляет более ранние месяцы: там линии обычно ниже 100 — цены тогда были ниже, чем в базовом месяце.</p></div>
     <div><h4>Ваша квартира</h4><p>Гедоническая цена именно введённой квартиры: та же модель, ваши параметры и ваша точка на карте.</p></div>
     <div><h4>Район / округ / город</h4><p>Средняя гедоническая цена типичного набора квартир («корзины»), которые продавались в этом районе, административном округе (в области — городском округе) или во всей Москве / области. Показывает, как дорожало жильё вокруг вас в целом.</p></div>
-    <div><h4>Версии модели</h4><p>Модель переобучается каждую среду на свежих продажах, каждая версия названа датой обучения. Выберите версию в блоке «Расчёт»; оценка этой же квартиры другими версиями показана рядом, а на графике её можно включить отдельной линией.</p></div>
     <div><h4>Такое же число комнат</h4><p>Та же корзина, но только квартиры с тем же числом комнат, что у вас (студии, 1-, 2-, 3-, 4+ комнатные), по всей Москве или области. Студии и большие квартиры дорожают с разной скоростью.</p></div>
   </div>
 </div>
@@ -321,12 +317,6 @@ function lineSpecs(r) {
   if (region) extra.push({ key: 'region', label: `${region.name} целиком`, color: '#059669', prices: region.hedonic_price_sq });
   if (region) extra.push({ key: 'rooms', label: `${ROOMS_LABEL[r.rooms] || r.rooms}, ${region.name}`, color: '#db2777',
                            prices: region.hedonic_rooms_price_sq });
-  (r.other_models || []).forEach((o, i) => {
-    const byPeriod = Object.fromEntries(o.periods.map((per, k) => [per, o.price_sq[k]]));
-    extra.push({ key: 'model:' + o.version, label: `Ваша квартира — модель ${o.version}`,
-                 color: ['#0ea5e9', '#64748b', '#a16207', '#be123c'][i % 4],
-                 prices: r.periods.map(per => byPeriod[per] ?? null) });
-  });
   return { fixed, extra };
 }
 
@@ -373,10 +363,6 @@ function drawIndex() {
   } } };
   charts.indexChart.update('none');
 }
-
-document.getElementById('model-select').addEventListener('change', () => {
-  if (VIEW.r) document.getElementById('form').requestSubmit();
-});
 
 document.getElementById('history-btn').onclick = () => {
   VIEW.history = !VIEW.history;
@@ -425,12 +411,6 @@ document.getElementById("form").onsubmit = async (e) => {
       document.getElementById("r-sqm").textContent = fmtRub(r.price_per_m2, 1000);
       document.getElementById("r-period").textContent = r.latest_period;
       document.getElementById("r-model").textContent = r.model;
-      const others = r.other_models || [];
-      document.getElementById("r-others-row").style.display = others.length ? '' : 'none';
-      document.getElementById("r-others").innerHTML = others.map(o => {
-        const d = 100 * (o.price_per_m2 / r.price_per_m2 - 1);
-        return `${o.version}: ${fmtRub(o.price_per_m2, 1000)}/м² на ${o.latest_period} (${d >= 0 ? '+' : ''}${d.toFixed(1)} %)`;
-      }).join('<br/>');
       document.getElementById("r-total").textContent = fmtRub(r.price_total, 100000);
       const fp = r.flat.price_sq, g = 100 * (fp[fp.length - 1] / fp[r.base_index] - 1);
       document.getElementById("r-growth").textContent = (g >= 0 ? '+' : '') + g.toFixed(1) + ' %';

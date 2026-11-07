@@ -1,8 +1,7 @@
 """Flat price + hedonic indices web app.
 
-Runs from precomputed bundles (see bundle.py): the baseline one in APP_DATA_DIR (in git) and the
-dated ones the weekly pipeline writes to APP_BUNDLES_DIR/<version>/. Each bundle is one model
-version; the page picks a version and shows the other versions' estimate of the same flat beside it.
+Runs from one precomputed bundle (see bundle.py): the newest one the weekly pipeline wrote to
+APP_BUNDLES_DIR/<date>/, else the baseline APP_DATA_DIR (in git). Always the latest model.
 The only thing computed per request is the model estimate of the entered flat (gradient boosting
 with month dummies): its features (same code as training), its price in the latest month and its
 curve over all months (only the month dummies change).
@@ -102,25 +101,15 @@ class Model:
                 "n_sales": m.get("n_sales"), "forward_mape": fwd.get("mape"), "forward_wape": fwd.get("wape")}
 
 
-def load_models() -> dict[str, Model]:
-    """Baseline bundle + the newest dated bundles; a dated bundle wins over a baseline of the same version."""
-    models = {}
-    base = Model(settings.APP_DATA_DIR)
-    models[base.version] = base
+def latest_bundle_dir() -> tuple[Path, str | None]:
+    """Newest dated bundle (APP_BUNDLES_DIR/<date>/), else the baseline APP_DATA_DIR."""
     root = settings.APP_BUNDLES_DIR
     dated = sorted(p for p in root.iterdir() if (p / "manifest.json").exists()) if root and root.is_dir() else []
-    for p in dated[-MAX_DATED_BUNDLES:]:
-        try:
-            models[p.name] = Model(p, version=p.name)
-        except Exception:  # noqa: BLE001 - one broken bundle must not take the app down
-            logger.exception("Skip bundle %s", p)
-    return dict(sorted(models.items()))
+    return (dated[-1], dated[-1].name) if dated else (settings.APP_DATA_DIR, None)
 
 
-MODELS = load_models()
-DEFAULT_MODEL = list(MODELS)[-1]  # newest
-M0 = MODELS[DEFAULT_MODEL]
-# Form options and limits come from the newest model (condition levels are the same in all).
+M0 = Model(*latest_bundle_dir())
+logger.info("Model %s from %s", M0.version, M0.path)
 CONDITION_LEVELS = M0.condition_levels
 CONDITION_DEFAULT = M0.condition_default
 
@@ -156,7 +145,6 @@ class FlatRequest(BaseModel):
     built_year: int
     building_batch_name: Optional[str] = None
     sale_type_name: str = "прямая продажа"
-    model: Optional[str] = None  # model version (bundle); default: the newest
 
     @field_validator("total_square", "kitchen_square", "life_square", "lat", "lon", mode="before")
     @classmethod
@@ -230,7 +218,7 @@ def flat_features(d: FlatRequest, m: Model) -> pl.DataFrame:
     """One-row frame through the same feature code as training (IEP variant)."""
     # Always estimated as a flat (not апартаменты) in a direct sale (прямая продажа).
     d = d.model_copy(update={"is_apartment": 0, "sale_type_name": "прямая продажа"})
-    df = pl.DataFrame([d.model_dump(exclude={"model"})]).rename({"lat": "location.lat", "lon": "location.lon"}).with_columns(
+    df = pl.DataFrame([d.model_dump()]).rename({"lat": "location.lat", "lon": "location.lon"}).with_columns(
         pl.lit("flat").alias("guid"),
         (pl.col("storey") == 1).cast(pl.Int8).alias("storey_first"),
         (pl.col("storey") == pl.col("storeys_count")).cast(pl.Int8).alias("storey_last"),
@@ -292,21 +280,13 @@ def area_series(m: Model, level: str, name: str | None, rooms: str | None = None
     }
 
 
-@app.get("/models")
-def models():
-    """Model versions the dashboard serves (one per bundle), oldest first."""
-    return {"default": DEFAULT_MODEL, "models": [m.info() for m in MODELS.values()]}
-
-
 @app.post("/estimate")
 def estimate(d: FlatRequest):
     errors = check_flat(d)
-    if d.model and d.model not in MODELS:
-        errors.append(f"Нет модели «{d.model}», есть: {', '.join(MODELS)}")
     if errors:
         return JSONResponse(status_code=422, content={"detail": errors})
 
-    m = MODELS[d.model or DEFAULT_MODEL]
+    m = M0
     price_sq, feats = flat_curve(d, m)
     latest = float(price_sq[-1])
     periods = m.periods
@@ -333,16 +313,6 @@ def estimate(d: FlatRequest):
                        "diff_pct": round(100 * (latest / sim[-1] - 1), 1)}
             break
 
-    # The same flat by the other model versions (their own months).
-    others = []
-    for v, om in MODELS.items():
-        if v == m.version:
-            continue
-        p, _ = flat_curve(d, om)
-        others.append({"version": v, "periods": om.periods, "price_sq": [round(float(x), 0) for x in p],
-                       "price_per_m2": round(float(p[-1]), 0), "latest_period": om.periods[-1],
-                       "base_index": om.base_idx})
-
     region = ("region", place["area_region"]) if place["area_region"] else ALL_AREA
     region_area = m.B.area(*region)
     return {
@@ -358,7 +328,6 @@ def estimate(d: FlatRequest):
             "price_sq": [round(float(p), 0) for p in price_sq],
             "index": [round(100 * float(p) / float(price_sq[0]), 2) for p in price_sq],
         },
-        "other_models": others,
         "place": {
             "region": place["area_region"] or "за пределами Москвы и области",
             "okrug": place["area_okrug"],
@@ -380,10 +349,10 @@ def estimate(d: FlatRequest):
 
 @app.get("/health")
 def health():
-    """For docker / load balancers: the bundles are loaded and which data the newest holds."""
+    """For docker / load balancers: the bundle is loaded, which model version and data it holds."""
     man = M0.B.manifest
     return {"status": "ok", "exported_at": man.get("exported_at"), "last_sale_date": man.get("last_sale_date"),
-            "periods": [M0.periods[0], M0.periods[-1]], "models": list(MODELS), "default_model": DEFAULT_MODEL}
+            "periods": [M0.periods[0], M0.periods[-1]], "model": M0.version}
 
 
 @app.exception_handler(Exception)
@@ -414,12 +383,6 @@ def page():
     building = '<option value="">— не знаю —</option>' + "".join(
         f'<option value="{b}">{b}</option>' for b in form.BUILDING_BATCHES
     )
-    model_opts = "".join(
-        f'<option value="{v}"{" selected" if v == DEFAULT_MODEL else ""}>'
-        f'{v} · данные по {mm.B.manifest.get("last_sale_date") or mm.periods[-1]}'
-        f'{" (новая)" if v == DEFAULT_MODEL and len(MODELS) > 1 else ""}</option>'
-        for v, mm in reversed(MODELS.items())
-    )
     condition = "".join(
         f'<option value="{c}"{" selected" if c == CONDITION_DEFAULT else ""}>{c}</option>'
         for c in CONDITION_LEVELS
@@ -428,7 +391,6 @@ def page():
         PAGE.replace("{{YANDEX_KEY}}", settings.YANDEX_MAPS_API_JS_KEY.get_secret_value())
         .replace("{{BUILDING_OPTIONS}}", building)
         .replace("{{CONDITION_OPTIONS}}", condition)
-        .replace("{{MODEL_OPTIONS}}", model_opts)
         .replace("{{BASE_PERIOD}}", M0.periods[M0.base_idx])
         .replace("{{FIRST_PERIOD}}", M0.periods[0])
         .replace("{{LATEST_PERIOD}}", M0.periods[-1])
