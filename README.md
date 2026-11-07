@@ -63,3 +63,44 @@ Tests:
 .venv/bin/python -m pytest                         # Windows: .venv\Scripts\python -m pytest
 ```
 
+
+## 5. Weekly pipeline (data → model → dashboard)
+
+`pipeline/` is the data and model pipeline (flats_pipeline). On the server, the Airflow DAG
+`hedonic_pipeline` (`dags/`) runs it every **Wednesday 15:00 Moscow**, one Docker step at a time:
+
+```
+winner_fetch → sync_raw → ingest_build → dataset → features → hedonic_index → evaluate → export_bundle → publish → deploy
+```
+
+Each run is a version named by its date (`RUN_DATE`, Moscow). Everything goes to the pipeline bucket
+(`.env.pipeline`, see `.env.pipeline.example`):
+
+| S3 key | What |
+|---|---|
+| `cian_winner/{old,new}/<export>_<date>.csv.gz` | raw baza-winner exports (input; `new/` gets two files each Wednesday) |
+| `flats_pipeline/{bronze,silver,gold}/…` | ingested exports, lots, sold flats |
+| `flats_pipeline/runs/<date>/modeling/…` | dataset, features, hedonic outputs of the run |
+| `models/<date>/model.cbm` (+ `model_meta.json`, `linear_model.json`, `forward_test.json`) | dated model |
+| `bundles/<date>/…` | dashboard bundle; `models/latest.json`, `bundles/latest.json` point to the newest |
+| `logs/<date>/pipeline_<day>.log` | pipeline log (also in Airflow task logs and `pipeline_data/logs/`) |
+
+The dashboard serves the baseline bundle (`data/`, in git) and every dated bundle in `bundles/`:
+pick the model version on the page; the other versions' estimate is shown beside it.
+
+Server setup (once):
+
+```bash
+cd /root/projects/iep_calculator_hedonic
+cp .env.pipeline.example .env.pipeline        # fill in the bucket keys (+ TELEGRAM_* for alerts)
+docker compose --profile pipeline build pipeline
+ln -s $PWD/dags/hedonic_pipeline.py $PWD/dags/hedonic_common.py /root/airflow/dags/
+docker compose up -d app
+```
+
+| What | Command |
+|---|---|
+| One step by hand | `docker compose --profile pipeline run --rm -e RUN_DATE=2026-11-11 pipeline <step>` |
+| Steps | `winner-fetch`, `sync-raw`, `run`, `dataset`, `features`, `hedonic-index`, `evaluate`, `export-bundle`, `publish` |
+| Whole run now | `airflow dags trigger hedonic_pipeline` (`--conf '{"run_date": "YYYY-MM-DD"}'` to redo a version) |
+| Model versions on the dashboard | `curl http://127.0.0.1:8010/models` |

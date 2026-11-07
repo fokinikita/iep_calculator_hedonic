@@ -1,0 +1,18 @@
+# Pinned to the versions the current model was built with (flats_pipeline venv, 2026-10-20).
+polars==1.44.2
+pyarrow==26.0.0
+pydantic==2.14.1
+pydantic-settings==2.16.0
+boto3==1.43.115
+botocore==1.43.115
+httpx==0.28.1
+truststore==0.10.5
+catboost==1.2.10
+numpy==2.5.4
+pandas==3.0.6
+scipy==1.18.1
+scikit-learn==1.9.1
+shapely==2.2.0
+attrs==26.1.0
+matplotlib==3.11.2
+xlsxwriter==3.2.9

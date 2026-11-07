@@ -5,10 +5,33 @@ services:
     env_file: .env
     environment:
       APP_DATA_DIR: /app/data
+      # dated bundles written by the weekly pipeline; the page lets you pick / compare models
+      APP_BUNDLES_DIR: /app/bundles
     volumes:
-      # bundle from `python -m flats_pipeline export-app`; read-only
+      # baseline bundle from git (`python -m flats_pipeline export-app`); read-only
       - ./data:/app/data:ro
+      - ./bundles:/app/bundles:ro
     ports:
       - "127.0.0.1:${APP_PORT:-8010}:8010"
-    mem_limit: 1g
+    mem_limit: 2g
     restart: unless-stopped
+
+  # Weekly pipeline (Airflow DAG dags/hedonic_pipeline.py): docker compose run --rm pipeline <command>
+  pipeline:
+    build: ./pipeline
+    image: hedonic-pipeline:latest
+    profiles: ["pipeline"]
+    env_file: .env.pipeline
+    environment:
+      DATA_DIR: /data
+      BUNDLES_DIR: /bundles
+      INBOX_DIRS: "[]"
+      UPLOAD_TO_S3: "true"
+      MODEL_MAX_MEMORY_GB: "0"
+      POLARS_MAX_THREADS: "8"
+      CATBOOST_THREADS: "8"
+    volumes:
+      - ./pipeline/src:/app/src:ro
+      - ./pipeline_data:/data
+      - ./bundles:/bundles
+    mem_limit: 18g
