@@ -165,6 +165,7 @@
       <div class="chart-controls">
         <span class="ctl-label">Добавить гедонические индексы:</span>
         <div id="extra-lines" class="chips"></div>
+        <button type="button" id="median-btn" class="btn-ghost">Скрыть медиану</button>
         <button type="button" id="history-btn" class="btn-ghost">Показать историю до {{BASE_PERIOD}}</button>
       </div>
       <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
@@ -289,7 +290,7 @@ const rubK = v => (v / 1000).toFixed(0) + 'k';
 function shortName(a) { return a.level === 'region' || a.level === 'all' ? a.name : a.name.replace('административный округ', 'АО'); }
 
 const ROOMS_LABEL = { 'студия': 'Студии', '1': '1-комнатные', '2': '2-комнатные', '3': '3-комнатные', '4+': '4+ комнатные' };
-const VIEW = { r: null, history: false, extra: new Set() };
+const VIEW = { r: null, history: false, median: true, extra: new Set() };
 
 // Index from a price series: price in the base month (or the first one after it, if missing) = 100.
 function rebase(prices, base) {
@@ -344,7 +345,7 @@ function renderChips(r) {
 function drawIndex() {
   const r = VIEW.r, base = r.base_index, from = VIEW.history ? 0 : base;
   const { fixed, extra } = lineSpecs(r);
-  const specs = fixed.concat(extra.filter(sp => sp.prices && VIEW.extra.has(sp.key)));
+  const specs = fixed.filter(sp => VIEW.median || sp.key !== 'median').concat(extra.filter(sp => sp.prices && VIEW.extra.has(sp.key)));
   const datasets = specs.map(sp => {
     const idx = rebase(sp.prices, base);
     if (!idx) return null;
@@ -363,6 +364,12 @@ function drawIndex() {
   } } };
   charts.indexChart.update('none');
 }
+
+document.getElementById('median-btn').onclick = () => {
+  VIEW.median = !VIEW.median;
+  document.getElementById('median-btn').textContent = VIEW.median ? 'Скрыть медиану' : 'Показать медиану';
+  drawIndex();
+};
 
 document.getElementById('history-btn').onclick = () => {
   VIEW.history = !VIEW.history;
