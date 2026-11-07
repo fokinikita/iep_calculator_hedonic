@@ -93,7 +93,7 @@ Server setup (once):
 
 ```bash
 cd /root/projects/iep_calculator_hedonic
-cp .env.pipeline.example .env.pipeline        # fill in the bucket keys (+ TELEGRAM_* for alerts)
+cp .env.pipeline.example .env.pipeline        # fill in the bucket keys
 docker compose --profile pipeline build pipeline
 ln -s $PWD/dags/hedonic_pipeline.py $PWD/dags/hedonic_common.py /root/airflow/dags/
 docker compose up -d app_v2

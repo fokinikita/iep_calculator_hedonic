@@ -23,7 +23,7 @@ import pendulum
 from airflow import DAG
 from airflow.providers.standard.operators.bash import BashOperator
 
-from hedonic_common import DEFAULT_ARGS, MOSCOW, PROJECT_DIR, notify_success, pipeline
+from hedonic_common import DEFAULT_ARGS, MOSCOW, PROJECT_DIR, pipeline
 
 STEPS = [
     ("winner_fetch", "winner-fetch", 1),
@@ -57,7 +57,6 @@ with DAG(
     schedule="0 15 * * 3",  # Wednesday 15:00 Moscow
     catchup=False,
     max_active_runs=1,
-    on_success_callback=notify_success,
     tags=["hedonic", "winner", "model"],
 ) as dag:
     tasks = [
