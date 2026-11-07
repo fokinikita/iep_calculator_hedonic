@@ -1,9 +1,10 @@
 """Flat price + hedonic indices web app.
 
-Runs from the precomputed bundle (APP_DATA_DIR, see bundle.py). The only thing computed per request
-is the model estimate of the entered flat (gradient boosting with month dummies): its features
-(same code as training), its price in the latest month and its curve over all months (only the
-month dummies change).
+Runs from one precomputed bundle (see bundle.py): the newest one the weekly pipeline wrote to
+APP_BUNDLES_DIR/<date>/, else the baseline APP_DATA_DIR (in git). Always the latest model.
+The only thing computed per request is the model estimate of the entered flat (gradient boosting
+with month dummies): its features (same code as training), its price in the latest month and its
+curve over all months (only the month dummies change).
 
 Run:  uvicorn flats_app.api:app --host 127.0.0.1 --port 8010
 """
@@ -65,24 +66,57 @@ FIELD_LABELS = {
     "lon": "Долгота",
 }
 
-# --- precomputed bundle, loaded once -----------------------------------------------------
-B = load_bundle(settings.APP_DATA_DIR, threads=settings.APP_THREADS)
-META = B.meta
-CONTINUOUS = META["continuous_features"]
-CATEGORICAL = META["categorical_features"]
-FEATURE_ORDER = META["feature_order"]  # continuous + month dummies + month number + categorical
-TIME_DUMMIES = META["time_dummies"]
-TIME_INDEX = META.get("time_index_feature")  # month number 0..n-1 (None in older bundles)
-FILL = META.get("continuous_fill", {})
-MONTHS = B.months
-PERIODS = B.periods
-CONDITION_LEVELS = META["condition_levels"]
-CONDITION_DEFAULT = META["condition_default"]
-CONDITION_FEATURE = META["condition_feature"]
-LOCAL_PRICE = META["local_price_feature"]
 # Index base: 12 months before the latest month (= 100). Earlier months are "history" (below / above 100).
 BASE_MONTHS_BACK = 12
-BASE_IDX = max(0, len(PERIODS) - 1 - BASE_MONTHS_BACK)
+MAX_DATED_BUNDLES = 4  # newest dated bundles kept in memory (plus the baseline)
+
+
+class Model:
+    """One bundle = one model version, with everything a request needs."""
+
+    def __init__(self, path: Path, version: str | None = None):
+        b = load_bundle(path, threads=settings.APP_THREADS)
+        self.B, self.path = b, path
+        meta = b.meta
+        self.version = version or b.manifest.get("model_built") or b.manifest.get("exported_at", "")[:10]
+        self.continuous = meta["continuous_features"]
+        self.categorical = meta["categorical_features"]
+        self.feature_order = meta["feature_order"]  # continuous + month dummies + month number + categorical
+        self.time_dummies = meta["time_dummies"]
+        self.time_index = meta.get("time_index_feature")  # month number 0..n-1 (None in older bundles)
+        self.fill = meta.get("continuous_fill", {})
+        self.months = b.months
+        self.periods = b.periods
+        self.condition_levels = meta["condition_levels"]
+        self.condition_default = meta["condition_default"]
+        self.condition_feature = meta["condition_feature"]
+        self.local_price = meta["local_price_feature"]
+        self.base_idx = max(0, len(self.periods) - 1 - BASE_MONTHS_BACK)
+
+    def info(self) -> dict:
+        m = self.B.manifest
+        fwd = ((m.get("quality") or {}).get("forward_test") or {}).get("boosting") or {}
+        return {"version": self.version, "model_built": m.get("model_built"), "exported_at": m.get("exported_at"),
+                "last_sale_date": m.get("last_sale_date"), "periods": [self.periods[0], self.periods[-1]],
+                "n_sales": m.get("n_sales"), "forward_mape": fwd.get("mape"), "forward_wape": fwd.get("wape")}
+
+
+def latest_bundle_dir() -> tuple[Path, str | None]:
+    """Newest dated bundle (APP_BUNDLES_DIR/<date>/), or the pinned APP_BUNDLE_VERSION; else APP_DATA_DIR."""
+    root = settings.APP_BUNDLES_DIR
+    if settings.APP_BUNDLE_VERSION:
+        pinned = root / settings.APP_BUNDLE_VERSION
+        if not (pinned / "manifest.json").exists():
+            raise RuntimeError(f"APP_BUNDLE_VERSION={settings.APP_BUNDLE_VERSION}: no bundle in {pinned}")
+        return pinned, pinned.name
+    dated = sorted(p for p in root.iterdir() if (p / "manifest.json").exists()) if root and root.is_dir() else []
+    return (dated[-1], dated[-1].name) if dated else (settings.APP_DATA_DIR, None)
+
+
+M0 = Model(*latest_bundle_dir())
+logger.info("Model %s from %s", M0.version, M0.path)
+CONDITION_LEVELS = M0.condition_levels
+CONDITION_DEFAULT = M0.condition_default
 
 app = FastAPI(title="Индекс цен квартиры")
 
@@ -185,7 +219,7 @@ def check_flat(d: FlatRequest) -> list[str]:
     return errors
 
 
-def flat_features(d: FlatRequest) -> pl.DataFrame:
+def flat_features(d: FlatRequest, m: Model) -> pl.DataFrame:
     """One-row frame through the same feature code as training (IEP variant)."""
     # Always estimated as a flat (not апартаменты) in a direct sale (прямая продажа).
     d = d.model_copy(update={"is_apartment": 0, "sale_type_name": "прямая продажа"})
@@ -198,25 +232,42 @@ def flat_features(d: FlatRequest) -> pl.DataFrame:
     )
     feats = add_areas(calculate_features(df))
     # The form offers the merged condition levels: the level is its position in the list.
-    feats = feats.with_columns(pl.lit(float(CONDITION_LEVELS.index(d.apartment_condition))).alias(CONDITION_FEATURE))
-    local = B.local.query(feats["location.lat"].to_numpy(), feats["location.lon"].to_numpy())
-    return feats.with_columns(pl.Series(LOCAL_PRICE, local))
+    feats = feats.with_columns(
+        pl.lit(float(m.condition_levels.index(d.apartment_condition))).alias(m.condition_feature)
+    )
+    local = m.B.local.query(feats["location.lat"].to_numpy(), feats["location.lon"].to_numpy())
+    return feats.with_columns(pl.Series(m.local_price, local))
 
 
-def model_input(features: pl.DataFrame) -> pl.DataFrame:
+def model_input(features: pl.DataFrame, m: Model) -> pl.DataFrame:
     """Fill gaps as in training: continuous inf/NaN -> training mean; categorical -> "missing"."""
     return features.with_columns(
         [
             pl.when(pl.col(c).cast(pl.Float64).is_finite()).then(pl.col(c).cast(pl.Float64))
-            .otherwise(pl.lit(FILL.get(c, 0.0))).alias(c)
-            for c in CONTINUOUS
+            .otherwise(pl.lit(m.fill.get(c, 0.0))).alias(c)
+            for c in m.continuous
         ]
-        + [pl.col(c).cast(pl.String).fill_null("missing") for c in CATEGORICAL]
-    ).select(CONTINUOUS + CATEGORICAL)
+        + [pl.col(c).cast(pl.String).fill_null("missing") for c in m.categorical]
+    ).select(m.continuous + m.categorical)
 
 
-def area_series(level: str, name: str | None, rooms: str | None = None) -> dict | None:
-    a = B.area(level, name)
+def flat_curve(d: FlatRequest, m: Model) -> tuple[np.ndarray, pl.DataFrame]:
+    """Price per m2 of the flat in every month of the model, and its features."""
+    feats = flat_features(d, m)
+    x = model_input(feats, m)
+    # One row per month: the flat as if sold in that month (month dummy = 1, the others 0; month number).
+    by_month = x.join(pl.DataFrame({"month_no": range(len(m.months))}), how="cross").with_columns(
+        [(pl.col("month_no") == i).cast(pl.Float64).alias(dummy) for i, dummy in enumerate(m.time_dummies)]
+        + ([pl.col("month_no").cast(pl.Float64).alias(m.time_index)] if m.time_index else [])
+    ).select(m.feature_order)
+    # The model predicts log(total price) (monotone in the areas and condition); per m2 = total / area.
+    # Plain rows (no pandas / pyarrow needed); columns in training order.
+    pool = Pool(by_month.rows(), cat_features=m.categorical, feature_names=m.feature_order)
+    return np.exp(m.B.model.predict(pool)) / d.total_square, feats
+
+
+def area_series(m: Model, level: str, name: str | None, rooms: str | None = None) -> dict | None:
+    a = m.B.area(level, name)
     if not a or all(v is None for v in a["hedonic_index"]):
         return None
     return {
@@ -228,7 +279,7 @@ def area_series(level: str, name: str | None, rooms: str | None = None) -> dict 
         "median_price_sq": a["median_price_sq"],
         "median_index": a["median_index"],
         "n_sales": a["n_sales"],
-        "similar_median_price_sq": (a["similar_median_price_sq"].get(rooms) or [None] * len(PERIODS)) if rooms else None,
+        "similar_median_price_sq": (a["similar_median_price_sq"].get(rooms) or [None] * len(m.periods)) if rooms else None,
         # hedonic price per m2 of the basket flats with the same number of rooms (None: too few)
         "hedonic_rooms_price_sq": a.get("hedonic_price_sq_by_rooms", {}).get(rooms) if rooms else None,
     }
@@ -240,30 +291,23 @@ def estimate(d: FlatRequest):
     if errors:
         return JSONResponse(status_code=422, content={"detail": errors})
 
-    feats = flat_features(d)
-    x = model_input(feats)
-    # One row per month: the flat as if sold in that month (month dummy = 1, the others 0; month number).
-    by_month = x.join(pl.DataFrame({"month_no": range(len(MONTHS))}), how="cross").with_columns(
-        [(pl.col("month_no") == i).cast(pl.Float64).alias(dummy) for i, dummy in enumerate(TIME_DUMMIES)]
-        + ([pl.col("month_no").cast(pl.Float64).alias(TIME_INDEX)] if TIME_INDEX else [])
-    ).select(FEATURE_ORDER)
-    # The model predicts log(total price) (monotone in the areas and condition); per m2 = total / area.
-    # Plain rows (no pandas / pyarrow needed); columns in training order.
-    pool = Pool(by_month.rows(), cat_features=CATEGORICAL, feature_names=FEATURE_ORDER)
-    price_sq = np.exp(B.model.predict(pool)) / d.total_square
+    m = M0
+    price_sq, feats = flat_curve(d, m)
     latest = float(price_sq[-1])
+    periods = m.periods
 
     place = feats.row(0, named=True)
     rooms = room_bucket(d.total_room_count)
     areas = []
     if place["area_region"]:
-        areas.append(area_series("region", place["area_region"], rooms))
+        areas.append(area_series(m, "region", place["area_region"], rooms))
         if place["region_type"] == "moscow":
-            areas += [area_series("okrug", place["area_okrug"], rooms), area_series("raion", place["area_raion"], rooms)]
+            areas += [area_series(m, "okrug", place["area_okrug"], rooms),
+                      area_series(m, "raion", place["area_raion"], rooms)]
         else:
-            areas.append(area_series("go", place["area_go"], rooms))
+            areas.append(area_series(m, "go", place["area_go"], rooms))
     else:
-        areas.append(area_series(*ALL_AREA))
+        areas.append(area_series(m, *ALL_AREA))
     areas = [a for a in areas if a]
     # Compare with similar flats: the smallest area with a recent median, else the region.
     compare = None
@@ -275,14 +319,16 @@ def estimate(d: FlatRequest):
             break
 
     region = ("region", place["area_region"]) if place["area_region"] else ALL_AREA
-    region_area = B.area(*region)
+    region_area = m.B.area(*region)
     return {
+        "model": m.version,
+        "model_info": m.info(),
         "price_per_m2": round(latest, 0),
         "price_total": round(latest * d.total_square, 0),
-        "latest_period": PERIODS[-1],
-        "periods": PERIODS,
-        "base_index": BASE_IDX,
-        "base_period": PERIODS[BASE_IDX],
+        "latest_period": periods[-1],
+        "periods": periods,
+        "base_index": m.base_idx,
+        "base_period": periods[m.base_idx],
         "flat": {
             "price_sq": [round(float(p), 0) for p in price_sq],
             "index": [round(100 * float(p) / float(price_sq[0]), 2) for p in price_sq],
@@ -298,20 +344,20 @@ def estimate(d: FlatRequest):
         "areas": areas,
         "region_median": {
             "name": region[1],
-            "index": region_area["median_index"] if region_area else [None] * len(PERIODS),
+            "index": region_area["median_index"] if region_area else [None] * len(periods),
         },
         "rooms": rooms,
         "compare": compare,
-        "local_price_sq": round(float(np.exp(place[LOCAL_PRICE])), 0),
+        "local_price_sq": round(float(np.exp(place[m.local_price])), 0),
     }
 
 
 @app.get("/health")
 def health():
-    """For docker / load balancers: the bundle is loaded and which data it holds."""
-    m = B.manifest
-    return {"status": "ok", "exported_at": m.get("exported_at"), "last_sale_date": m.get("last_sale_date"),
-            "periods": [PERIODS[0], PERIODS[-1]]}
+    """For docker / load balancers: the bundle is loaded, which model version and data it holds."""
+    man = M0.B.manifest
+    return {"status": "ok", "exported_at": man.get("exported_at"), "last_sale_date": man.get("last_sale_date"),
+            "periods": [M0.periods[0], M0.periods[-1]], "model": M0.version}
 
 
 @app.exception_handler(Exception)
@@ -350,9 +396,9 @@ def page():
         PAGE.replace("{{YANDEX_KEY}}", settings.YANDEX_MAPS_API_JS_KEY.get_secret_value())
         .replace("{{BUILDING_OPTIONS}}", building)
         .replace("{{CONDITION_OPTIONS}}", condition)
-        .replace("{{BASE_PERIOD}}", PERIODS[BASE_IDX])
-        .replace("{{FIRST_PERIOD}}", PERIODS[0])
-        .replace("{{LATEST_PERIOD}}", PERIODS[-1])
+        .replace("{{BASE_PERIOD}}", M0.periods[M0.base_idx])
+        .replace("{{FIRST_PERIOD}}", M0.periods[0])
+        .replace("{{LATEST_PERIOD}}", M0.periods[-1])
         .replace("{{MAX_STOREYS}}", str(MAX_STOREYS))
         .replace("{{MAX_TOTAL_SQUARE}}", str(MAX_TOTAL_SQUARE))
         .replace("{{MAX_BALCONIES}}", str(MAX_BALCONIES))

@@ -134,7 +134,7 @@
     </div>
     <div id="error-box"><div class="err-title">Проверьте поля</div><ul id="error-list"></ul></div>
     <div id="result-card">
-      <div class="result-header">Оценка на {{LATEST_PERIOD}}</div>
+      <div class="result-header">Оценка на <span id="r-period">{{LATEST_PERIOD}}</span> · модель <span id="r-model"></span></div>
       <div class="result-body">
         <div class="result-row"><span class="result-label">Цена за м²</span><span class="result-value" id="r-sqm"></span></div>
         <div class="result-row"><span class="result-label">Итоговая цена</span><span class="result-value big" id="r-total"></span></div>
@@ -409,6 +409,8 @@ document.getElementById("form").onsubmit = async (e) => {
       errorBox.style.display = 'block'; resultCard.style.display = 'none';
     } else {
       document.getElementById("r-sqm").textContent = fmtRub(r.price_per_m2, 1000);
+      document.getElementById("r-period").textContent = r.latest_period;
+      document.getElementById("r-model").textContent = r.model;
       document.getElementById("r-total").textContent = fmtRub(r.price_total, 100000);
       const fp = r.flat.price_sq, g = 100 * (fp[fp.length - 1] / fp[r.base_index] - 1);
       document.getElementById("r-growth").textContent = (g >= 0 ? '+' : '') + g.toFixed(1) + ' %';

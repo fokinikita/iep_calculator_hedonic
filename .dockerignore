@@ -6,3 +6,11 @@ tests/
 data.tmp/
 data.old/
 scripts/
+pipeline/
+pipeline_data/
+bundles/
+logs/
+pipeline_tmp/
+dags/
+.env.pipeline
+.idea/

@@ -146,3 +146,10 @@ def test_year_base_and_room_hedonic():
     assert len(region["hedonic_rooms_price_sq"]) == n and all(v for v in region["hedonic_rooms_price_sq"])
     studio = client.post("/estimate", json={**FLAT, "total_room_count": "0", "lat": 55.7558, "lon": 37.6173}).json()
     assert studio["areas"][0]["hedonic_rooms_price_sq"] != region["hedonic_rooms_price_sq"]
+
+
+def test_latest_model_only():
+    h = client.get("/health").json()
+    body = client.post("/estimate", json={**FLAT, "lat": 55.7558, "lon": 37.6173}).json()
+    assert body["model"] == h["model"] and "other_models" not in body
+    assert client.get("/models").status_code == 404

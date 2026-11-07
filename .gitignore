@@ -6,3 +6,9 @@ __pycache__/
 .ruff_cache/
 data.tmp/
 data.old/
+.env.pipeline
+pipeline_data/
+bundles/
+logs/
+pipeline_tmp/
+.idea/

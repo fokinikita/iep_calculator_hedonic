@@ -11,6 +11,10 @@ class Settings(BaseSettings):
 
     # The precomputed bundle written by `python -m flats_pipeline export-app`.
     APP_DATA_DIR: Path = PROJECT_ROOT / "data"
+    # Dated bundles from the weekly pipeline (<dir>/<version>/); each is one model version on the page.
+    APP_BUNDLES_DIR: Path = PROJECT_ROOT / "bundles"
+    # Pin one dated bundle (e.g. 2026-11-04) instead of the newest; empty = newest.
+    APP_BUNDLE_VERSION: str = ""
     # Yandex Maps JS API key (map + address search on the page).
     YANDEX_MAPS_API_JS_KEY: SecretStr = SecretStr("")
     # Threads for the model / nearest-sales search (one request = one small prediction).
