@@ -27,6 +27,11 @@ logger = logging.getLogger(__name__)
 MIN_SELL_DAYS = 14  # sold in under 14 days: mostly glitches and duplicates
 INT64_COLUMNS = ["total_room_count", "is_apartment", "storeys_count", "storey", "built_year"]
 EXTRA_COLUMNS = ["sold_date_source", "n_listings"]
+# Secondary market only. The exports also hold primary-market listings (developer sales, ДДУ,
+# assignments): ~26% of sold flats in Oct 2026 (17% in houses finished after the sale year). They
+# are priced by developers, grew much slower and set most of the "houses 2010+" basket, so every
+# typical resale flat looked like it grew faster than its район / округ / city.
+PRIMARY_MARKET_NOTE = r"(?i)переуступ|(^|[^а-яё])дду([^а-яё]|$)|от застройщика|договор[а-я]* участия|долев[а-я]* участи|214[- ]?фз"
 
 
 def dataset_path(as_of: date) -> Path:
@@ -47,6 +52,7 @@ def build_dataset(
     min_sold_date: date | None = None,
     max_sold_date: date | None = None,
     only_confirmed: bool = False,
+    secondary_only: bool = True,
 ) -> Path:
     sold_dir = sold_dir or build.latest_sold_dir()
     parts = sorted(sold_dir.glob("*.parquet"))
@@ -61,6 +67,14 @@ def build_dataset(
         filters.append(pl.col("sold_date") <= max_sold_date)
     if only_confirmed:
         filters.append(pl.col("sold_confirmed_by_snapshot"))
+    if secondary_only:
+        built = pl.col("built_year").cast(pl.Int64, strict=False)
+        primary = (built > pl.col("sold_date").dt.year()).fill_null(False) | pl.col("note").str.contains(
+            PRIMARY_MARKET_NOTE).fill_null(False)
+        n = sold.select(pl.len(), primary.sum().alias("primary")).collect()
+        logger.info("Secondary market only: dropping %d of %d sold flats (primary market: house not built by the "
+                    "sale year, or ДДУ / assignment / developer in the description)", n["primary"][0], n["len"][0])
+        filters.append(~primary)
     sold = sold.filter(filters)
 
     # 1. Prepare flat attributes with a light stand-in for the description text.
