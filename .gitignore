@@ -11,3 +11,4 @@ pipeline_data/
 bundles/
 logs/
 pipeline_tmp/
+.idea/
