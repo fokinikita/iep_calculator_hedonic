@@ -73,7 +73,7 @@ logs/pipeline_<date>.log
 `lot_status` values: `sold`, `removed_recently` (≤ 14 days, may still come back), `active`,
 `active_not_in_latest_export` (last seen listed but missing from the newest export), `other`.
 
-S3: `s3://<S3_BUCKET_NAME>/<S3_PREFIX>/bronze/...`, plus `silver/lots.parquet` and `gold/sold_flats_<as_of>/`.
+S3 (bucket from `HEDONIC_S3_BUCKET` in `.env.pipeline`): `s3://<bucket>/<S3_PREFIX>/bronze/...`, plus `silver/lots.parquet` and `gold/sold_flats_<as_of>/`.
 
 ## Modelling: dataset -> features -> hedonic index
 

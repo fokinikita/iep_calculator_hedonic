@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from pydantic import AliasChoices, Field, SecretStr
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -35,16 +35,14 @@ class Settings(BaseSettings):
     # Where `export-app` writes the web app bundle (the app repo iep_calculator_hedonic, its data/).
     APP_BUNDLE_DIR: Path = PROJECT_ROOT.parent.parent / "iep_calculator_hedonic" / "data"
 
-    # Yandex Maps JS API key for the web app (map + address search).
-    YANDEX_MAPS_API_JS_KEY: SecretStr = SecretStr("")
 
-    # S3: the pipeline bucket (.env.pipeline: HEDONIC_S3_*; the old S3_* names still work).
+    # S3: the hedonic bucket, only from .env.pipeline (HEDONIC_S3_*).
     UPLOAD_TO_S3: bool = True
-    S3_ENDPOINT_URL: str = Field("", validation_alias=AliasChoices("HEDONIC_S3_ENDPOINT_URL", "S3_ENDPOINT_URL"))
-    S3_ACCESS_KEY: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("HEDONIC_S3_ACCESS_KEY", "S3_ACCESS_KEY"))
-    S3_SECRET_KEY: SecretStr = Field(SecretStr(""), validation_alias=AliasChoices("HEDONIC_S3_SECRET_KEY", "S3_SECRET_KEY"))
-    S3_BUCKET_NAME: str = Field("rental-forecast", validation_alias=AliasChoices("HEDONIC_S3_BUCKET", "S3_BUCKET_NAME"))
-    S3_REGION: str = Field("ru-1", validation_alias=AliasChoices("HEDONIC_S3_REGION", "S3_REGION"))
+    S3_ENDPOINT_URL: str = Field("", validation_alias="HEDONIC_S3_ENDPOINT_URL")
+    S3_ACCESS_KEY: SecretStr = Field(SecretStr(""), validation_alias="HEDONIC_S3_ACCESS_KEY")
+    S3_SECRET_KEY: SecretStr = Field(SecretStr(""), validation_alias="HEDONIC_S3_SECRET_KEY")
+    S3_BUCKET_NAME: str = Field("", validation_alias="HEDONIC_S3_BUCKET")
+    S3_REGION: str = Field("ru-1", validation_alias="HEDONIC_S3_REGION")
     # Prefix of the pipeline's own outputs (bronze/silver/gold, modeling runs) in the bucket.
     S3_PREFIX: str = "flats_pipeline"
 
