@@ -11,7 +11,8 @@ Every Wednesday 15:00 Moscow (baza-winner refreshes the exports after 14:00):
   evaluate        out-of-time test (last 3 months) -> quality shown in the bundle manifest
   export_bundle   web app bundle -> bundles/<RUN_DATE>/
   publish         modeling outputs, models/<RUN_DATE>/model.cbm, bundles/<RUN_DATE>/ -> S3
-  deploy          restart the dashboard: it serves every bundle (old and new model side by side)
+  deploy          restart the new dashboard (app_v2, port 8011): it serves every bundle (old and new
+                  model side by side); the current dashboard (app, port 8010) is not touched
 
 Install: symlink this file and hedonic_common.py into the Airflow dags folder.
 """
@@ -39,13 +40,13 @@ STEPS = [
 DEPLOY = f"""
 set -e
 cd {PROJECT_DIR}
-docker compose up -d app
-docker compose restart app
+docker compose up -d --build app_v2
+docker compose restart app_v2
 for i in $(seq 1 60); do
-  docker compose ps app | grep -q "(healthy)" && break; sleep 5
+  docker compose ps app_v2 | grep -q "(healthy)" && break; sleep 5
 done
-docker compose ps app | grep -q "(healthy)"
-curl -fsS http://127.0.0.1:8010/models
+docker compose ps app_v2 | grep -q "(healthy)"
+curl -fsS http://127.0.0.1:8011/models
 """
 
 with DAG(

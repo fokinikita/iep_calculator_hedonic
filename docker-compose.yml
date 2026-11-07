@@ -1,19 +1,34 @@
 services:
+  # Current dashboard (one baseline bundle from git).
   app:
     build: .
     image: flats-app:latest
     env_file: .env
     environment:
       APP_DATA_DIR: /app/data
-      # dated bundles written by the weekly pipeline; the page lets you pick / compare models
+    volumes:
+      # bundle from `python -m flats_pipeline export-app`; read-only
+      - ./data:/app/data:ro
+    ports:
+      - "127.0.0.1:${APP_PORT:-8010}:8010"
+    mem_limit: 1g
+    restart: unless-stopped
+
+  # New dashboard: every model version (baseline data/ + weekly bundles/<date>/), model picker and
+  # comparison. Redeployed by the hedonic_pipeline DAG after each weekly run.
+  app_v2:
+    build: .
+    image: flats-app:v2
+    env_file: .env
+    environment:
+      APP_DATA_DIR: /app/data
       APP_BUNDLES_DIR: /app/bundles
     volumes:
-      # baseline bundle from git (`python -m flats_pipeline export-app`); read-only
       - ./data:/app/data:ro
       - ./bundles:/app/bundles:ro
     ports:
-      - "127.0.0.1:${APP_PORT:-8010}:8010"
-    mem_limit: 2g
+      - "127.0.0.1:${APP_V2_PORT:-8011}:8010"
+    mem_limit: 3g
     restart: unless-stopped
 
   # Weekly pipeline (Airflow DAG dags/hedonic_pipeline.py): docker compose run --rm pipeline <command>
