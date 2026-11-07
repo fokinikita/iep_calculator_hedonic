@@ -247,8 +247,9 @@ def build_index(start_month: str | None = None, variant: str = "iep") -> pl.Data
     curves, curves_lin = [], []
     for m in months:
         b = with_time(basket, months, m)
-        level[m] = float(predict_price_sq(model, b, feats, categorical).mean())
-        level_lin[m] = float(linear.predict_price_sq(b).mean())
+        # geometric mean of the basket (see build_area_indices)
+        level[m] = float(np.exp(np.log(predict_price_sq(model, b, feats, categorical)).mean()))
+        level_lin[m] = float(np.exp(np.log(linear.predict_price_sq(b)).mean()))
         sm = with_time(sample, months, m)
         curves.append(np.log(predict_price_sq(model, sm, feats, categorical)))
         curves_lin.append(np.log(linear.predict_price_sq(sm)))
@@ -322,11 +323,14 @@ AREA_LEVELS = {
     "go": "Городской округ Московской области",
 }
 MIN_AREA_BASKET = 100  # fewer basket flats in an area: no area hedonic index
-MIN_AREA_MONTH_SALES = 30  # fewer sales in a month: no median for that month
+# Median price per m2 of an area: sales of the last MEDIAN_WINDOW_MONTHS months (one month alone jumps:
+# in the centre ±5% a month for ЦАО, up to ±23% for a район, from which flats happened to sell).
+MEDIAN_WINDOW_MONTHS = 3
+MIN_AREA_MONTH_SALES = 60  # fewer sales in the window: no median for that month
 
 
 ROOM_BUCKETS = ["студия", "1", "2", "3", "4+"]
-MIN_SIMILAR_SALES = 15
+MIN_SIMILAR_SALES = 30
 
 
 def room_bucket(rooms: pl.Expr) -> pl.Expr:
@@ -367,12 +371,29 @@ def build_similar_medians(data: pl.DataFrame, months: list[str]) -> pl.DataFrame
     return out
 
 
+def window_medians(data: pl.DataFrame, by: list[str], months: list[str]) -> pl.DataFrame:
+    """Per group and month: median price per m2 of the sales in that month and the
+    MEDIAN_WINDOW_MONTHS - 1 before it (null below MIN_AREA_MONTH_SALES), and the month's own sales."""
+    own = data.group_by(*by, TIME).agg(pl.len().alias("n_sales"))
+    frames = []
+    for i, m in enumerate(months):
+        window = months[max(0, i - MEDIAN_WINDOW_MONTHS + 1): i + 1]
+        g = data.filter(pl.col(TIME).is_in(window))
+        agg = [pl.col(TARGET).exp().median().alias("median_price_sq"), pl.len().alias("n_window")]
+        frames.append((g.group_by(*by).agg(agg) if by else g.select(agg)).with_columns(pl.lit(m).alias(TIME)))
+    med = pl.concat(frames).with_columns(
+        pl.when(pl.col("n_window") >= MIN_AREA_MONTH_SALES).then(pl.col("median_price_sq")).alias("median_price_sq")
+    ).drop("n_window")
+    return med.join(own, on=[*by, TIME], how="left").with_columns(pl.col("n_sales").fill_null(0))
+
+
 def build_area_indices(variant: str = "iep") -> pl.DataFrame:
     """Hedonic (both models) and median price per m2 by month for every region / округ / район /
     городской округ.
 
     Hedonic: the fixed basket, restricted to the area, priced in every month.
-    Median: median price per m2 of all sales in the area in that month (not quality-adjusted).
+    Median: median price per m2 of all sales in the area in that month and the 2 before it
+    (not quality-adjusted; one month alone is too noisy in small or mixed areas).
     """
     from catboost import CatBoostRegressor
 
@@ -407,9 +428,12 @@ def build_area_indices(variant: str = "iep") -> pl.DataFrame:
             pl.Series("pred_lin", linear.predict_price_sq(b)),
         ))
     preds = pl.concat(preds)
+    # Geometric mean (= mean of log prices): every basket flat weighs the same, as the model is in logs.
+    # The arithmetic mean was price-weighted: expensive flats (slower growth) set the index, so a typical
+    # flat grew faster than its район / округ / city (Moscow 2025-09..2026-09: 13.8% vs 15-16%).
     hedonic_aggs = [
-        pl.col("pred").mean().alias("hedonic_price_sq"),
-        pl.col("pred_lin").mean().alias("hedonic_price_sq_linear"),
+        pl.col("pred").log().mean().exp().alias("hedonic_price_sq"),
+        pl.col("pred_lin").log().mean().exp().alias("hedonic_price_sq_linear"),
         pl.len().alias("n_basket"),
     ]
 
@@ -422,14 +446,7 @@ def build_area_indices(variant: str = "iep") -> pl.DataFrame:
             .agg(hedonic_aggs)
             .filter(pl.col("n_basket") >= MIN_AREA_BASKET)
         )
-        med = (
-            data.filter(pl.col(col).is_not_null())
-            .group_by(col, TIME)
-            .agg(pl.col(TARGET).exp().median().alias("median_price_sq"), pl.len().alias("n_sales"))
-            .with_columns(
-                pl.when(pl.col("n_sales") >= MIN_AREA_MONTH_SALES).then(pl.col("median_price_sq")).alias("median_price_sq")
-            )
-        )
+        med = window_medians(data.filter(pl.col(col).is_not_null()), [col], months)
         frames.append(
             hed.join(med, on=[col, TIME], how="full", coalesce=True)
             .rename({col: "area"})
@@ -438,7 +455,7 @@ def build_area_indices(variant: str = "iep") -> pl.DataFrame:
     # Whole sample (Москва + область + the rest) as a fallback.
     frames.append(
         preds.group_by(TIME).agg(hedonic_aggs)
-        .join(data.group_by(TIME).agg(pl.col(TARGET).exp().median().alias("median_price_sq"), pl.len().alias("n_sales")), on=TIME)
+        .join(window_medians(data, [], months), on=TIME)
         .with_columns(pl.lit("Москва и область").alias("area"), pl.lit("all").alias("level"))
     )
     first = months[0]
@@ -474,14 +491,14 @@ def build_room_indices(preds: pl.DataFrame, first: str) -> pl.DataFrame:
         frames.append(
             preds.filter(pl.col(col).is_not_null() & pl.col("rooms").is_not_null())
             .group_by(col, "rooms", TIME)
-            .agg(pl.col("pred").mean().alias("hedonic_price_sq"), pl.len().alias("n_basket"))
+            .agg(pl.col("pred").log().mean().exp().alias("hedonic_price_sq"), pl.len().alias("n_basket"))
             .filter(pl.col("n_basket") >= MIN_AREA_BASKET)
             .rename({col: "area"})
             .with_columns(pl.lit(level).alias("level"))
         )
     frames.append(
         preds.filter(pl.col("rooms").is_not_null()).group_by("rooms", TIME)
-        .agg(pl.col("pred").mean().alias("hedonic_price_sq"), pl.len().alias("n_basket"))
+        .agg(pl.col("pred").log().mean().exp().alias("hedonic_price_sq"), pl.len().alias("n_basket"))
         .with_columns(pl.lit("Москва и область").alias("area"), pl.lit("all").alias("level"))
     )
     rooms = (

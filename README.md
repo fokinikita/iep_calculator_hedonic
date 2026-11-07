@@ -85,9 +85,9 @@ Each run is a version named by its date (`RUN_DATE`, Moscow). Everything goes to
 | `bundles/<date>/…` | dashboard bundle; `models/latest.json`, `bundles/latest.json` point to the newest |
 | `logs/<date>/pipeline_<day>.log` | pipeline log (also in Airflow task logs and `pipeline_data/logs/`) |
 
-The new dashboard (`app_v2`, http://127.0.0.1:8011) always uses the latest model: the newest dated bundle
-in `bundles/` (baseline `data/` until the first run). The current dashboard (`app`, port 8010) keeps
-serving `data/` only.
+Dashboards: `app_v3` (http://127.0.0.1:8022) always uses the latest model, the newest dated bundle in
+`bundles/`, and is redeployed by the DAG. For comparison: `app` (8010) serves the git baseline `data/`,
+`app_v2` (8011) is frozen on bundle 2026-11-04 (`APP_BUNDLE_VERSION`).
 
 Server setup (once):
 
@@ -96,7 +96,7 @@ cd /root/projects/iep_calculator_hedonic
 cp .env.pipeline.example .env.pipeline        # fill in the bucket keys
 docker compose --profile pipeline build pipeline
 ln -s $PWD/dags/hedonic_pipeline.py $PWD/dags/hedonic_common.py /root/airflow/dags/
-docker compose up -d app_v2
+docker compose up -d app_v3
 ```
 
 | What | Command |
@@ -104,4 +104,4 @@ docker compose up -d app_v2
 | One step by hand | `docker compose --profile pipeline run --rm -e RUN_DATE=2026-11-11 pipeline <step>` |
 | Steps | `winner-fetch`, `sync-raw`, `run`, `dataset`, `features`, `hedonic-index`, `evaluate`, `export-bundle`, `publish` |
 | Whole run now | `airflow dags trigger hedonic_pipeline` (`--conf '{"run_date": "YYYY-MM-DD"}'` to redo a version) |
-| Model version on the new dashboard | `curl http://127.0.0.1:8011/health` |
+| Model version on the main dashboard | `curl http://127.0.0.1:8022/health` |

@@ -14,11 +14,28 @@ services:
     mem_limit: 1g
     restart: unless-stopped
 
-  # New dashboard: every model version (baseline data/ + weekly bundles/<date>/), model picker and
-  # comparison. Redeployed by the hedonic_pipeline DAG after each weekly run.
+  # Comparison host: frozen on the first automatic run (bundle 2026-11-04, before the index fixes).
   app_v2:
     build: .
     image: flats-app:v2
+    env_file: .env
+    environment:
+      APP_DATA_DIR: /app/data
+      APP_BUNDLES_DIR: /app/bundles
+      APP_BUNDLE_VERSION: "2026-11-04"
+    volumes:
+      - ./data:/app/data:ro
+      - ./bundles:/app/bundles:ro
+    ports:
+      - "127.0.0.1:${APP_V2_PORT:-8011}:8010"
+    mem_limit: 2g
+    restart: unless-stopped
+
+  # Main dashboard: always the latest model (newest bundles/<date>/). Redeployed by the
+  # hedonic_pipeline DAG after each weekly run.
+  app_v3:
+    build: .
+    image: flats-app:v3
     env_file: .env
     environment:
       APP_DATA_DIR: /app/data
@@ -27,8 +44,8 @@ services:
       - ./data:/app/data:ro
       - ./bundles:/app/bundles:ro
     ports:
-      - "127.0.0.1:${APP_V2_PORT:-8011}:8010"
-    mem_limit: 3g
+      - "127.0.0.1:${APP_V3_PORT:-8022}:8010"
+    mem_limit: 2g
     restart: unless-stopped
 
   # Weekly pipeline (Airflow DAG dags/hedonic_pipeline.py): docker compose run --rm pipeline <command>

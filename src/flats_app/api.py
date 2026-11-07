@@ -102,8 +102,13 @@ class Model:
 
 
 def latest_bundle_dir() -> tuple[Path, str | None]:
-    """Newest dated bundle (APP_BUNDLES_DIR/<date>/), else the baseline APP_DATA_DIR."""
+    """Newest dated bundle (APP_BUNDLES_DIR/<date>/), or the pinned APP_BUNDLE_VERSION; else APP_DATA_DIR."""
     root = settings.APP_BUNDLES_DIR
+    if settings.APP_BUNDLE_VERSION:
+        pinned = root / settings.APP_BUNDLE_VERSION
+        if not (pinned / "manifest.json").exists():
+            raise RuntimeError(f"APP_BUNDLE_VERSION={settings.APP_BUNDLE_VERSION}: no bundle in {pinned}")
+        return pinned, pinned.name
     dated = sorted(p for p in root.iterdir() if (p / "manifest.json").exists()) if root and root.is_dir() else []
     return (dated[-1], dated[-1].name) if dated else (settings.APP_DATA_DIR, None)
 
