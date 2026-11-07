@@ -75,6 +75,23 @@
   .chart-sub { font-size: .76rem; color: var(--muted); margin-bottom: 10px; }
   .chart-wrap { position: relative; height: 300px; }
   .chart-wrap.big { height: 560px; }
+  .chart-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 14px; margin: 6px 0 14px; }
+  .ctl-label { font-size: .78rem; font-weight: 600; color: var(--muted); }
+  .chips { display: flex; flex-wrap: wrap; gap: 8px; }
+  .chip { display: inline-flex; align-items: center; gap: 7px; font-size: .8rem; font-weight: 500; color: var(--text); margin: 0;
+    border: 1.5px solid var(--border); border-radius: 999px; padding: 5px 12px; cursor: pointer; user-select: none; background: #fff; }
+  .chip input { width: auto; margin: 0; accent-color: var(--c); }
+  .chip .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--c); }
+  .chip.on { border-color: var(--c); background: color-mix(in srgb, var(--c) 8%, #fff); }
+  .chip.off { opacity: .45; cursor: not-allowed; }
+  .btn-ghost { margin-left: auto; padding: 7px 14px; border: 1.5px solid var(--blue); color: var(--blue); background: #fff; border-radius: 8px;
+    font-family: inherit; font-size: .8rem; font-weight: 600; cursor: pointer; }
+  .btn-ghost:hover { background: #eff6ff; }
+  .always { font-size: .76rem; color: var(--muted); margin-bottom: 4px; }
+  .explain { margin-top: 28px; }
+  .explain-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 14px 28px; }
+  .explain h4 { font-size: .88rem; font-weight: 600; margin-bottom: 4px; }
+  .explain p { font-size: .84rem; color: #334155; line-height: 1.55; }
   .area-tag { display: inline-block; font-size: .7rem; font-weight: 600; color: var(--blue); background: #eff6ff; border-radius: 999px; padding: 2px 10px; margin-bottom: 6px; }
 </style>
 </head>
@@ -123,7 +140,7 @@
         <div class="result-row"><span class="result-label">Итоговая цена</span><span class="result-value big" id="r-total"></span></div>
         <div class="result-row"><span class="result-label" id="r-sim-label">Медиана похожих</span><span class="result-value small" id="r-sim"></span></div>
         <div class="result-row"><span class="result-label">Цены рядом (30 ближайших продаж)</span><span class="result-value small" id="r-local"></span></div>
-        <div class="result-row"><span class="result-label">Рост цены м² с {{BASE_PERIOD}}</span><span class="result-value small" id="r-growth"></span></div>
+        <div class="result-row"><span class="result-label">Рост цены м² за год (с {{BASE_PERIOD}})</span><span class="result-value small" id="r-growth"></span></div>
         <div class="result-row"><span class="result-label">Расположение</span><span class="result-value small" id="r-place"></span></div>
       </div>
     </div>
@@ -139,14 +156,31 @@
 </form>
 
 <div class="charts-section card">
-  <div class="section-title">Индексы цен за м²</div>
+  <div class="section-title">Индекс цен за м²</div>
   <div id="charts-placeholder" class="tip">Рассчитайте стоимость — здесь появится индекс цен вашей квартиры и рынка вокруг.</div>
   <div id="flat-charts" style="display:none;">
     <div class="chart-box">
-      <h3>Индексы цен за м²: ваша квартира и рынок вокруг (база: {{BASE_PERIOD}} = 100)</h3>
-      <div class="chart-sub">Гедонические индексы: одинаковые по качеству квартиры, меняется только месяц продажи (временные дамми).</div>
+      <h3>Как менялась цена м²: ваша квартира и рынок (база: <span id="base-label">{{BASE_PERIOD}}</span> = 100)</h3>
+      <div class="always">Всегда на графике: гедоническая цена вашей квартиры и обычная медиана цены м² в вашем округе.</div>
+      <div class="chart-controls">
+        <span class="ctl-label">Добавить гедонические индексы:</span>
+        <div id="extra-lines" class="chips"></div>
+        <button type="button" id="history-btn" class="btn-ghost">Показать историю до {{BASE_PERIOD}}</button>
+      </div>
       <div class="chart-wrap big"><canvas id="indexChart"></canvas></div>
     </div>
+  </div>
+</div>
+
+<div class="explain card">
+  <div class="section-title">Как читать график — простыми словами</div>
+  <div class="explain-grid">
+    <div><h4>Гедоническая цена</h4><p>Цена «одной и той же квартиры» в разные месяцы. Модель берёт квартиру с фиксированными параметрами (площадь, этаж, дом, место, ремонт) и оценивает, сколько бы она стоила в каждом месяце. Меняется только месяц продажи — поэтому видно чистое движение рынка, без влияния того, какие именно квартиры продавались.</p></div>
+    <div><h4>Обычная медиана</h4><p>Середина цен м² всех реальных продаж в округе за месяц. Она «скачет»: если в одном месяце продали больше дорогих квартир, а в другом — дешёвых, медиана меняется, хотя рынок мог стоять на месте. Мы показываем её для сравнения.</p></div>
+    <div><h4>Индекс и база 100</h4><p>Все линии пересчитаны так, что ровно 12 месяцев назад (<b>{{BASE_PERIOD}}</b>) каждая равна 100. Значение 108 значит «на 8 % дороже, чем год назад». Кнопка «Показать историю» добавляет более ранние месяцы: там линии обычно ниже 100 — цены тогда были ниже, чем в базовом месяце.</p></div>
+    <div><h4>Ваша квартира</h4><p>Гедоническая цена именно введённой квартиры: та же модель, ваши параметры и ваша точка на карте.</p></div>
+    <div><h4>Район / округ / город</h4><p>Средняя гедоническая цена типичного набора квартир («корзины»), которые продавались в этом районе, административном округе (в области — городском округе) или во всей Москве / области. Показывает, как дорожало жильё вокруг вас в целом.</p></div>
+    <div><h4>Такое же число комнат</h4><p>Та же корзина, но только квартиры с тем же числом комнат, что у вас (студии, 1-, 2-, 3-, 4+ комнатные), по всей Москве или области. Студии и большие квартиры дорожают с разной скоростью.</p></div>
   </div>
 </div>
 </div>
@@ -254,17 +288,99 @@ function draw(id, labels, datasets, yTitle, fmt) {
 const rubK = v => (v / 1000).toFixed(0) + 'k';
 function shortName(a) { return a.level === 'region' || a.level === 'all' ? a.name : a.name.replace('административный округ', 'АО'); }
 
-function indexDatasets(r, flatIndex, areaKey) {
-  const ds = [line('Ваша квартира', flatIndex, COLORS.flat, false, false)];
-  r.areas.forEach(a => ds.push(line(shortName(a), a[areaKey], COLORS[a.level], a.level !== 'region' && a.level !== 'all')));
-  ds.forEach(d => { d.borderWidth = d.borderDash.length ? 2.2 : 3; d.pointRadius = 3; });
-  return ds;
+const ROOMS_LABEL = { 'студия': 'Студии', '1': '1-комнатные', '2': '2-комнатные', '3': '3-комнатные', '4+': '4+ комнатные' };
+const VIEW = { r: null, history: false, extra: new Set() };
+
+// Index from a price series: price in the base month (or the first one after it, if missing) = 100.
+function rebase(prices, base) {
+  if (!prices) return null;
+  let b = null;
+  for (let i = base; i < prices.length && !b; i++) b = prices[i];
+  if (!b) return null;
+  return prices.map(v => (v === null || v === undefined) ? null : Math.round(10000 * v / b) / 100);
 }
 
+// All lines for this flat: the two fixed ones and the optional hedonic ones (key, label, color, prices).
+function lineSpecs(r) {
+  const by = Object.fromEntries(r.areas.map(a => [a.level, a]));
+  const district = by.okrug || by.go || by.region || by.all;
+  const region = by.region || by.all;
+  const fixed = [
+    { key: 'flat', label: 'Ваша квартира (гедоническая цена)', color: COLORS.flat, prices: r.flat.price_sq, width: 3.2 },
+    { key: 'median', label: `Медиана цены м², ${shortName(district)} (без поправки на качество)`, color: '#94a3b8',
+      prices: district.median_price_sq, dashed: true },
+  ];
+  const extra = [];
+  if (by.raion) extra.push({ key: 'raion', label: `Район ${by.raion.name}`, color: '#7c3aed', prices: by.raion.hedonic_price_sq });
+  if (by.okrug) extra.push({ key: 'okrug', label: `Округ: ${shortName(by.okrug)}`, color: '#d97706', prices: by.okrug.hedonic_price_sq });
+  if (by.go) extra.push({ key: 'go', label: by.go.name, color: '#d97706', prices: by.go.hedonic_price_sq });
+  if (region) extra.push({ key: 'region', label: `${region.name} целиком`, color: '#059669', prices: region.hedonic_price_sq });
+  if (region) extra.push({ key: 'rooms', label: `${ROOMS_LABEL[r.rooms] || r.rooms}, ${region.name}`, color: '#db2777',
+                           prices: region.hedonic_rooms_price_sq });
+  return { fixed, extra };
+}
+
+function renderChips(r) {
+  const { extra } = lineSpecs(r);
+  const box = document.getElementById('extra-lines');
+  box.innerHTML = '';
+  extra.forEach(sp => {
+    const ok = !!sp.prices, on = ok && VIEW.extra.has(sp.key);
+    const el = document.createElement('label');
+    el.className = 'chip' + (on ? ' on' : '') + (ok ? '' : ' off');
+    el.style.setProperty('--c', sp.color);
+    el.title = ok ? '' : 'Мало продаж для индекса';
+    el.innerHTML = `<input type="checkbox" ${on ? 'checked' : ''} ${ok ? '' : 'disabled'}/><span class="dot"></span>`;
+    el.append(sp.label + (ok ? '' : ' — мало данных'));
+    el.querySelector('input').onchange = e => {
+      e.target.checked ? VIEW.extra.add(sp.key) : VIEW.extra.delete(sp.key);
+      el.classList.toggle('on', e.target.checked);
+      drawIndex();
+    };
+    box.append(el);
+  });
+}
+
+function drawIndex() {
+  const r = VIEW.r, base = r.base_index, from = VIEW.history ? 0 : base;
+  const { fixed, extra } = lineSpecs(r);
+  const specs = fixed.concat(extra.filter(sp => sp.prices && VIEW.extra.has(sp.key)));
+  const datasets = specs.map(sp => {
+    const idx = rebase(sp.prices, base);
+    if (!idx) return null;
+    const d = line(sp.label, idx.slice(from), sp.color, !!sp.dashed, false);
+    d.prices = sp.prices.slice(from);
+    d.borderWidth = sp.width || (sp.dashed ? 2.2 : 2.6);
+    d.pointRadius = sp.dashed ? 2 : 3;
+    // history months (before the base month) drawn lighter
+    d.segment = { borderColor: ctx => (from + ctx.p1DataIndex <= base && from < base ? sp.color + '80' : sp.color) };
+    return d;
+  }).filter(Boolean);
+  draw('indexChart', r.periods.slice(from), datasets, 'Индекс (база = 100)', v => v);
+  charts.indexChart.options.plugins.tooltip = { callbacks: { label: c => {
+    const p = c.dataset.prices[c.dataIndex];
+    return ` ${c.dataset.label}: ${c.parsed.y.toFixed(1)}` + (p ? ` · ${fmtRub(p, 1000)}/м²` : '');
+  } } };
+  charts.indexChart.update('none');
+}
+
+document.getElementById('history-btn').onclick = () => {
+  VIEW.history = !VIEW.history;
+  document.getElementById('history-btn').textContent = VIEW.history
+    ? 'Скрыть историю' : `Показать историю до ${VIEW.r.base_period}`;
+  drawIndex();
+};
+
 function render(r) {
+  VIEW.r = r;
   document.getElementById('charts-placeholder').style.display = 'none';
   document.getElementById('flat-charts').style.display = 'block';
-  draw('indexChart', r.periods, indexDatasets(r, r.flat.index, 'hedonic_index'), 'Индекс (база = 100)', v => v);
+  document.getElementById('base-label').textContent = r.base_period;
+  const hb = document.getElementById('history-btn');
+  hb.style.display = r.base_index > 0 ? '' : 'none';
+  hb.textContent = VIEW.history ? 'Скрыть историю' : `Показать историю до ${r.base_period}`;
+  renderChips(r);
+  drawIndex();
 }
 
 document.getElementById("form").onsubmit = async (e) => {
@@ -294,7 +410,7 @@ document.getElementById("form").onsubmit = async (e) => {
     } else {
       document.getElementById("r-sqm").textContent = fmtRub(r.price_per_m2, 1000);
       document.getElementById("r-total").textContent = fmtRub(r.price_total, 100000);
-      const g = r.flat.index[r.flat.index.length - 1] - 100;
+      const fp = r.flat.price_sq, g = 100 * (fp[fp.length - 1] / fp[r.base_index] - 1);
       document.getElementById("r-growth").textContent = (g >= 0 ? '+' : '') + g.toFixed(1) + ' %';
       if (r.compare) {
         const rl = r.rooms === 'студия' ? 'студий' : r.rooms + '-комн.';

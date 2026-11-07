@@ -136,3 +136,13 @@ def test_same_answers_as_pipeline():
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["flat"]["price_sq"] == pytest.approx(case["boosting_price_sq"], abs=1), case["request"]
+
+
+def test_year_base_and_room_hedonic():
+    body = client.post("/estimate", json={**FLAT, "lat": 55.7558, "lon": 37.6173}).json()
+    n = len(body["periods"])
+    assert body["base_index"] == max(0, n - 13) and body["base_period"] == body["periods"][body["base_index"]]
+    region = body["areas"][0]
+    assert len(region["hedonic_rooms_price_sq"]) == n and all(v for v in region["hedonic_rooms_price_sq"])
+    studio = client.post("/estimate", json={**FLAT, "total_room_count": "0", "lat": 55.7558, "lon": 37.6173}).json()
+    assert studio["areas"][0]["hedonic_rooms_price_sq"] != region["hedonic_rooms_price_sq"]

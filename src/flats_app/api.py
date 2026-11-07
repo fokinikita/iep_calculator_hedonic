@@ -80,6 +80,9 @@ CONDITION_LEVELS = META["condition_levels"]
 CONDITION_DEFAULT = META["condition_default"]
 CONDITION_FEATURE = META["condition_feature"]
 LOCAL_PRICE = META["local_price_feature"]
+# Index base: 12 months before the latest month (= 100). Earlier months are "history" (below / above 100).
+BASE_MONTHS_BACK = 12
+BASE_IDX = max(0, len(PERIODS) - 1 - BASE_MONTHS_BACK)
 
 app = FastAPI(title="Индекс цен квартиры")
 
@@ -226,6 +229,8 @@ def area_series(level: str, name: str | None, rooms: str | None = None) -> dict 
         "median_index": a["median_index"],
         "n_sales": a["n_sales"],
         "similar_median_price_sq": (a["similar_median_price_sq"].get(rooms) or [None] * len(PERIODS)) if rooms else None,
+        # hedonic price per m2 of the basket flats with the same number of rooms (None: too few)
+        "hedonic_rooms_price_sq": a.get("hedonic_price_sq_by_rooms", {}).get(rooms) if rooms else None,
     }
 
 
@@ -276,6 +281,8 @@ def estimate(d: FlatRequest):
         "price_total": round(latest * d.total_square, 0),
         "latest_period": PERIODS[-1],
         "periods": PERIODS,
+        "base_index": BASE_IDX,
+        "base_period": PERIODS[BASE_IDX],
         "flat": {
             "price_sq": [round(float(p), 0) for p in price_sq],
             "index": [round(100 * float(p) / float(price_sq[0]), 2) for p in price_sq],
@@ -343,7 +350,8 @@ def page():
         PAGE.replace("{{YANDEX_KEY}}", settings.YANDEX_MAPS_API_JS_KEY.get_secret_value())
         .replace("{{BUILDING_OPTIONS}}", building)
         .replace("{{CONDITION_OPTIONS}}", condition)
-        .replace("{{BASE_PERIOD}}", PERIODS[0])
+        .replace("{{BASE_PERIOD}}", PERIODS[BASE_IDX])
+        .replace("{{FIRST_PERIOD}}", PERIODS[0])
         .replace("{{LATEST_PERIOD}}", PERIODS[-1])
         .replace("{{MAX_STOREYS}}", str(MAX_STOREYS))
         .replace("{{MAX_TOTAL_SQUARE}}", str(MAX_TOTAL_SQUARE))
