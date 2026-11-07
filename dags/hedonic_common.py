@@ -14,7 +14,7 @@ MOSCOW = "Europe/Moscow"  # Airflow runs with default_timezone = utc; Russia has
 # or `{"run_date": "YYYY-MM-DD"}` in the trigger conf (re-run an older version).
 RUN_DATE = (
     "{{ dag_run.conf.get('run_date') if dag_run.conf and dag_run.conf.get('run_date') "
-    "else dag_run.run_after.in_timezone('Europe/Moscow').strftime('%Y-%m-%d') }}"
+    "else (dag_run.run_after + macros.timedelta(hours=3)).strftime('%Y-%m-%d') }}"
 )
 
 DEFAULT_ARGS = {
